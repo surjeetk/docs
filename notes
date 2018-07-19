@@ -1,0 +1,19 @@
+Forex phillipsCapital
+https://www.phillipcapital.in/9.13.0.0.zip
+
+http://phillipcapital.in/java.zip
+
+FXCM
+https://fxcm.github.io/rest-api-docs/#section/Overview
+https://apiwiki.fxcorporate.com/api/RestAPI/JavaRestClient.zip
+We have RSI example program in Python for REST API:
+
+https://apiwiki.fxcorporate.com/api/StrategyRealCaseStudy/RestAPI/RsiStrategy.zip
+
+and Java RSI program for Java API:
+
+https://apiwiki.fxcorporate.com/api/StrategyRealCaseStudy/JavaAPI/FXCM_Java_API_Tutorial_RsiSignal_Strategy.zip
+
+ 
+
+you may need to translate the Python to Java or to use some parts from the Java program.
