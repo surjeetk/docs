@@ -17,3 +17,27 @@ https://apiwiki.fxcorporate.com/api/StrategyRealCaseStudy/JavaAPI/FXCM_Java_API_
  
 
 you may need to translate the Python to Java or to use some parts from the Java program.
+
+
+---Questions--
+2. difference between fail fast and fail safe iterator?
+3. How linkedHashmap maintains order --> using doubly linked list
+4. How checked exceptions are wrapped under unchecked exceptions?
+5 How to make callback class or method?
+6. What is repeatable annotation?
+7. How listner or callback internally works?
+
+--links--
+https://stackoverflow.com/questions/8192223/object-cloning-with-out-implementing-cloneable-interface
+https://javarevisited.blogspot.com/2017/04/difference-between-autowired-and-inject-annotation-in-spring-framework.html#at_pco=smlwn-1.0&at_si=5b6cfdbb332493d6&at_ab=per-2&at_pos=0&at_tot=1
+
+
+--java memory mgmt--
+https://betsol.com/2017/06/java-memory-management-for-java-virtual-machine-jvm/
+https://www.journaldev.com/2856/java-jvm-memory-model-memory-management-in-java
+
+--spring-
+https://docs.spring.io/spring-security/site/docs/5.0.6.RELEASE/reference/htmlsingle/#jc-authentication-userdetailsservice
+https://aboullaite.me/the-magic-behind-the-magic-spring-boot-autoconfiguration/
+http://dhaval-shah.com/unraveling-the-magic-behind-spring-boot/
+
