@@ -41,6 +41,10 @@ https://docs.spring.io/spring-security/site/docs/5.0.6.RELEASE/reference/htmlsin
 https://aboullaite.me/the-magic-behind-the-magic-spring-boot-autoconfiguration/
 http://dhaval-shah.com/unraveling-the-magic-behind-spring-boot/
 
+--Spring boot program args--
+--spring.devtools.restart.additional-paths=K:/Technologies/SpringBoot/spring_boot_properties/ --spring.config.additional-location="file:K:/Technologies/SpringBoot/spring_boot_properties/application.properties" --spring.profiles.active=prod
+
+
 -Spring rest --
 https://www.baeldung.com/rest-with-spring-series/
 
