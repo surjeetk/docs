@@ -57,3 +57,12 @@ https://www.baeldung.com/persistence-with-spring-series/
 
 ---Concurrency--
 https://docs.oracle.com/javase/tutorial/essential/concurrency/interfere.html
+
+-----------To enable Thead visualization in JVisualVM use below VM arguments--
+-Dcom.sun.management.jmxremote
+-Dcom.sun.management.jmxremote.port=9010
+-Dcom.sun.management.jmxremote.local.only=false
+-Dcom.sun.management.jmxremote.authenticate=false
+-Dcom.sun.management.jmxremote.ssl=false
+
+---------------------------------------------------------
