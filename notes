@@ -52,7 +52,8 @@ http://dhaval-shah.com/unraveling-the-magic-behind-spring-boot/
 
 -----------Spring Boot Best Practices----------------
 https://www.vinaysahni.com/best-practices-for-building-a-microservice-architecture
-
+https://github.com/Netflix/eureka/wiki/Eureka-at-a-glance
+https://github.com/Netflix/zuul/wiki
 
 --Webflux Reactive stack vs Servlet stack--
 https://medium.com/@the.raj.saxena/springboot-2-performance-servlet-stack-vs-webflux-reactive-stack-528ad5e9dadc
