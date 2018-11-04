@@ -50,10 +50,13 @@ https://aboullaite.me/the-magic-behind-the-magic-spring-boot-autoconfiguration/
 http://dhaval-shah.com/unraveling-the-magic-behind-spring-boot/
 
 
------------Spring Boot Best Practices----------------
+-----------Spring Boot Cloud Best Practices----------------
 https://www.vinaysahni.com/best-practices-for-building-a-microservice-architecture
 https://github.com/Netflix/eureka/wiki/Eureka-at-a-glance
 https://github.com/Netflix/zuul/wiki
+https://developers.redhat.com/blog/2016/12/09/spring-cloud-for-microservices-compared-to-kubernetes/
+https://dzone.com/articles/deploying-microservices-spring-cloud-vs-kubernetes
+https://dzone.com/articles/microservice-architecture-with-spring-cloud-and-do
 
 --Webflux Reactive stack vs Servlet stack--
 https://medium.com/@the.raj.saxena/springboot-2-performance-servlet-stack-vs-webflux-reactive-stack-528ad5e9dadc
