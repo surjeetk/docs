@@ -78,6 +78,7 @@ https://www.baeldung.com/persistence-with-spring-series/
 
 ---Concurrency--
 https://docs.oracle.com/javase/tutorial/essential/concurrency/interfere.html
+https://techdifferences.com/difference-between-thread-class-and-runnable-interface-in-java.html
 
 -----------To enable Thead visualization in JVisualVM use below VM arguments--
 -Dcom.sun.management.jmxremote
