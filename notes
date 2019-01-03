@@ -113,3 +113,54 @@ https://github.com/RasaHQ/rasa_core/tree/master/examples/restaurantbot
 
 
 
+–-------micro service--
+(No subject)
+[Draft]
+This message hasn't been sent.
+Saved on: Sun 9/23/2018 5:35 AM
+ 
+-dmaven.multimoduleprojectdirectory system property is not set eclipse
+
+
+--------cloudfoundry----
+1. bootstrap.properties
+2. 
+
+cf login -a https://api.run.pivotal.io -u karmakarsurjeet@gmail.com
+
+cf push my-hello-app2 -p SpringBootTest-0.0.1-SNAPSHOT.jar
+
+
+https://github.com/sbolchetwar/microservices-training
+
+https://github.com/Pivotal-Field-Engineering/spring-boot-data-rest-demo/blob/master/README.md
+
+https://github.com/sbolchetwar/microservices-training
+
+https://github.com/Pivotal-Field-Engineering/spring-boot-data-rest-demo/blob/master/README.md
+
+
+Zuul --> dynamic routing, callback filter
+Eureka Server --> Service Directory
+
+
+--research--
+lombok
+memcached
+kubernetes
+docker
+circuit breaker
+kerberos
+site minder
+
+
+Hystrix --> fallback mechanism
+
+--links--
+https://www.baeldung.com/bootstraping-a-web-application-with-spring-and-java-based-configuration
+https://www.baeldung.com/simplifying-the-data-access-layer-with-spring-and-java-generics
+https://www.baeldung.com/security-spring
+
+http://www.springboottutorial.com/microservices-with-spring-boot-part-4-ribbon-for-load-balancing
+
+
