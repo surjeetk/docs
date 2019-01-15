@@ -164,3 +164,6 @@ https://www.baeldung.com/security-spring
 http://www.springboottutorial.com/microservices-with-spring-boot-part-4-ribbon-for-load-balancing
 
 
+----------------Questions--------
+1. How web.xml is removed in spring boot?
+
