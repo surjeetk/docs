@@ -99,7 +99,7 @@ http://www.java2novice.com/java_interview_questions/countdownlatch-cyclicbarrier
 https://stackoverflow.com/questions/8192223/object-cloning-with-out-implementing-cloneable-interface
 https://javapapers.com/core-java/java-weak-reference/
 
---to do--
+
 https://www.journaldev.com/1330/java-collections-interview-questions-and-answers
 https://dzone.com/articles/lifecycle-of-a-request-response-process-for-a-spri
 https://aboullaite.me/the-magic-behind-the-magic-spring-boot-autoconfiguration/
@@ -112,13 +112,12 @@ https://www.google.co.in/amp/s/www.datasciencelearner.com/how-to-build-a-chatbot
 https://github.com/RasaHQ/rasa_core/tree/master/examples/restaurantbot
 
 
+https://github.com/eugenp/tutorials/tree/master/spring-rest
+https://www.baeldung.com/rest-template
 
 –-------micro service--
-(No subject)
-[Draft]
-This message hasn't been sent.
-Saved on: Sun 9/23/2018 5:35 AM
- 
+
+
 -dmaven.multimoduleprojectdirectory system property is not set eclipse
 
 
