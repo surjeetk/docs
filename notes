@@ -190,3 +190,35 @@ https://github.com/eugenp/tutorials
   https://dzone.com/articles/building-a-web-app-using-spring-boot-angular-6-and
   https://github.com/JohnnyLe/Modern-Ecommerce
   https://github.com/jhipster/jhipster-sample-app
+
+
+
+-----------------------------------------------Commands on Putty for AWS Docker-------------------------------------------------------> 
+------------first time usage-----------------  
+sudo yum update
+sudo yum install -y docker
+sudo service docker start 
+ 
+ 
+-------create a file with below content and name it as ‘Dockerfile’ ------------>
+  
+FROM openjdk:8
+ADD TropicalFruits-API.jar TropicalFruits-API.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "TropicalFruits-API.jar"] 
+
+<-----------------End of file-----------------------------------------------------
+
+
+--------------------to Copy the jar in the instance ---------------------------
+//to create image(go to path where jar and above file is kept and run below command)
+sudo docker build -t tropical-fruits-docker-image .
+//to check the created docker images
+sudo docker images --filter reference=tropical-fruits-docker-image
+ 
+--------------------------to run the docker image-------------------------------
+//run the image(first port is the port configured in ec2, second one is of spring application)hit the application e.g. ‘ http://ec2-18-218-83-254.us-east-2.compute.amazonaws.com/’
+sudo docker run -p 443:8080 tropical-fruits-docker-image   
+
+
+<----------------------------------------------------------------end of commands---------------------------------------------------
