@@ -222,3 +222,6 @@ sudo docker run -p 443:8080 tropical-fruits-docker-image  
 
 
 <----------------------------------------------------------------end of commands---------------------------------------------------
+
+---PCF cloud config server--
+https://github.com/Java-Techie-jt/cloud-config-pivotal-cloud-foundry
