@@ -257,6 +257,7 @@ ls /brokers/topics
 get /brokers/ids/0
 
 
+/consumers, /brokers/ids, /brokers/topics, /config, /admin/delete_topics, /brokers/seqid, /isr_change_notification, /config/topics, /config/clients
 
 ---------------imp links------
 https://medium.com/hacking-talent/kafka-all-you-need-to-know-8c7251b49ad0
