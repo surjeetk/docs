@@ -237,3 +237,34 @@ https://github.com/Java-Techie-jt/cloud-config-pivotal-cloud-foundry
 https://www.martinfowler.com/articles/enterprisePatterns.html
 
 
+-----------------------Kafka----------------
+zookeeper-server-start.bat ../../config/zookeeper.properties
+kafka-server-start.bat ../../config/server-2.properties
+kafka-server-start.bat ../../config/server.properties
+
+
+kafka-topics.bat --zookeeper localhost:2181 --create --topic simpleTopic --partitions 3 --replication-factor 2
+kafka-topics.bat --describe --zookeeper localhost:2181
+kafka-topics.bat --delete --topic simpleTopic1 -zookeeper localhost:2181
+kafka-topics.bat --zookeeper localhost:2181 --alter --topic simpleTopic --config retention.ms=1000
+
+
+kafka-consumer-groups.bat --describe --all-groups --bootstrap-server localhost:9092
+
+zookeeper-shell.bat localhost:2181
+ls /brokers/ids
+ls /brokers/topics
+get /brokers/ids/0
+
+
+
+---------------imp links------
+https://medium.com/hacking-talent/kafka-all-you-need-to-know-8c7251b49ad0
+https://github.com/yahoo/kafka-manager/releases
+https://kafka.apache.org/documentation/
+http://cloudurable.com/blog/kafka-architecture-low-level/index.html
+http://cloudurable.com/blog/kafka-ecosystem/index.html
+
+----------Imp concepts---
+-tombstones --> null records. Kafka delete such record after delete.retention.ms time
+-Quorum --> Zookeeper cluster
