@@ -269,3 +269,18 @@ http://cloudurable.com/blog/kafka-ecosystem/index.html
 ----------Imp concepts---
 -tombstones --> null records. Kafka delete such record after delete.retention.ms time
 -Quorum --> Zookeeper cluster
+
+
+--------------------------------------------------------------------------------------------------------
+-> Kafka Publisher (rest impl in progress)
+-> Review training materials (deck, code, flow)
+-> GKS Demo code, Kafka Stream demo code, Microservice SpringBoot Kafka demo
+-> delete topic try and try increasing or reducing replication factor
+-> Avro serialization internals
+-> current offset and committed offset difference
+-> confirmation of message sending from producer to broker and broker to consumer (ack)
+-> how exactly once is achieved
+-> short zookeeper tutorial
+-> Real life use case (How world is using it), bit theory
+-> Properties and prod config analysis
+-> 
