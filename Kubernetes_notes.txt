@@ -1,0 +1,554 @@
+Master node:
+-> we can have multiple master nodes for resiliency and there is a concept of election for leader master selection
+-> Each master node consist of:
+	- API Server
+	- Cluster Store(KV based on etcd - read as et see dee) -- e.g. desired state is stored in this as record of intend
+	- Kube-controller-manager( these are basically controller of controllers). Reconciles observed state with desired state.
+	- Kube-scheduler
+		-- watches API server for new work tasks
+		-- Assign work to cluster nodes - Affinity/Anti-affinity, Constraints, Taints, Resources, etc
+		
+Worker nodes:
+-consist of:
+	-Kubelet:
+		- Main kubernetes agent
+		- Registers node with cluster
+		- Watches API server for work tasks (Pods)
+		- Execute Pods
+		- Reports back to Masters 
+	- Container Runtime:
+		- Can be Docker
+		- Pluggable: Container Runtime Interface(CRI)
+			- Docker, containerd, CRI-O,Kata...
+		-Low-level container intelligence
+	- Kube-proxy -- it makes sure that every pod gets its own unique IP. Plays vital role in networking.
+		- Networking component
+		- Pod IP addresses
+		- Basic load-balacing among pods
+		
+Declarative Model:
+
+Service Object: 
+	- Provides stable name and IP as PODs IP keep getting changed. 
+	- It also does load balancing
+	- It considers those PODs for loadbalancing whose labels matches with its label (matches with all its labels)
+	- Only sends traffic to healty pods
+	- Can do session affinity
+	- Can send traffic to endpoints outside the cluster
+	- Can do TCP and UDP
+	- Services can be defined without pod selectors. For example, to point a service to another service in a different namespace or cluster.
+
+NodePort: The port is known cluster wide and you connect to any node in the cluster and give the port it will take you to the service and ultimately the related pod	
+
+Service types:
+	- Cluster IP (default) -- Internal cluster connectivity
+	- NodePort -- External access via nodes
+	- LoadBalancer -- External access via cloud load-balancer
+	
+	
+Volumes:
+	- Pods do live and die and they have ephemeral storage (temporary). 
+	- Volumes are meant for persisting state or data.
+	- Pods can attached to multiple volumes
+	- May or may not be tied to Pod's lifetime (depends on volume types)
+	- Kubernetes support
+		- volumes
+		- persistentVolumes
+		- persistentVolumeClaims
+		- StorageClasses
+	- Few volume types:
+		- emptyDir - used for storing "transient" data(shares a Pod's lifetime) useful for sharing files between containers running in a pod
+		- hostPath - Pod mounts into the node's filesystem. If node goes down then you could potentially lose data.
+		- nfs - An NFS (Network File System) share mounted into the pod
+		- configMap/secret - Special types of volumes that provide a pod with access to Kubernetes resources
+		- persistentVolumeClaim - provides pods with a more persistent storage option that is abstracted from the details
+		- Cloud - cluster-wide storage 
+		
+Key command-line switches for configMap:
+			--from-file
+			--from-env-file
+			--from-literal
+			
+ConfigMap:
+	- envFrom can be used to load all ConfigMap keys/values into environment variables
+
+Secrets: 
+	Key points:
+		- Enable encryption at rest for cluster data
+		- Limit access to etcd (where secrets are stored) to only admin users
+		- Use SSL\TLS for etcd peer-to-peer communication
+		- Manifest(YAML\JSON) files only base64 encode the Secret
+		- Pods can access Secrets so secure which users can create pods. Role-based access control (RBAC) can be used
+		- to access secrets as env variables use secretKeyRef
+		
+		
+	
+Troubleshooting steps:
+- Control plane giving 403
+kubectl create clusterrolebinding cluster-system-anonymous --clusterrole=cluster-admin --user=system:anonymous
+
+Commands:
+- To Expose a Pod (imperative way of declaring service)
+kubectl expose pod <pod_name> --name=hello-svc <registered_in_dns> --target-port=8080 --type=NodePort
+	
+-to List services
+kubectl get svc
+
+-to get pod IP
+kubectl get pods -o wide
+
+- to get details of the pod
+kubectl describe pods <pod_name>
+
+- to get the service URL in minikube
+minikube service <service_name> --url
+
+- to get list of deploy
+kubectl get deploy
+
+- to get list of replica set
+kubectl get rs
+
+- to get list of endpoint objects
+kubectl get ep
+
+- to check status while deployment
+kubectl rollout status deploy web-deploy
+
+- to check deployment revisions
+kubectl rollout history deploy web-deploy
+
+- to undo deployment
+kubectl rollout undo deploy web-deploy --to-revision=1
+
+- viewing a Pod's volumes
+1. Desribe pods
+kubectl describe pod [pod-name]
+
+2. Get Pod YAML
+kubectl get pod [pod-name] -o yaml
+
+- to exec to particular container in a pod with multiple containers
+kubectl exec [pod-name] -c [container-name] -it sh
+	
+- create a configMap using data from a file
+kubectl create configmap [cm-name] --from-file=[path-to-file ]
+
+- crete secret command
+kubectl create secret generic my-secret --from-literal=pwd=my-password
+
+kubectl create secret generic my-secret --from-file=ssh-privatekey=~/.ssh/id_rsa
+kubectl create secret generic my-secret --from-file=ssh-publickey=~/.ssh/id_rsa.pub
+
+kubectl create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.key
+
+kubectl get secrets
+kubectl get secrtes db-passwords -o yaml
+
+To extract pod definition in a file
+kubectl get pod <pod-name> -o yaml > pod-definition.yaml
+
+To edit pod properties:
+kubectl edit pod <pod-name>
+
+To scale pods:
+kubectl scale [--resource-version=version] [--current-replicas=count] --replicas=COUNT (-f FILENAME | TYPE NAME)
+kubectl scale --replicas=6 replicaset <replicaset-name>
+kubectl scale --replicas=6 -f replicaset-def.yml
+kubectl replace -f replicaset-def.yml
+
+to get image details in pod:
+kubectl get deployment -o wide
+
+To make dev as default namespace:
+kubectl config set-context $(kubectl config current-context) --namespace=dev
+kubectl config set-context --current --namespace=dev
+
+To list pods from all namespaces
+kubectl get pods --all-namespaces
+
+To create namespace:
+kubectl create namespace <namespace-name>
+
+One line command to create pod:
+k run redis --image=redis --restart=Never --namespace=finance
+restartpolicies:Always, OnFailure, and Never
+
+
+DNS:
+db-service.dev.svc.cluster.local
+service-name.namespace.service.cluster.local 
+
+If simply wants to test the command without creating resources:
+--dry-run=client
+
+Generate POD Manifest YAML file (-o yaml). Don't create it(--dry-run):
+kubectl run nginx --image=nginx --dry-run=client -o yaml
+
+Create a deployment:
+kubectl create deployment --image=nginx nginx
+
+Generate Deployment YAML file (-o yaml). Don't create it(--dry-run):
+kubectl create deployment --image=nginx nginx --dry-run -o yaml
+
+Generate Deployment with 4 Replicas:
+kubectl create deployment nginx --image=nginx --replicas=4
+
+You can also scale a deployment using the kubectl scale command:
+kubectl scale deployment nginx --replicas=4
+
+Create a Service named redis-service of type ClusterIP to expose pod redis on port 6379 (This will automatically use the pod's labels as selectors):
+kubectl expose pod redis --port=6379 --name redis-service --dry-run=client --type=ClusterIP|NodePort -o yaml
+or
+This will not use the pods labels as selectors, instead it will assume selectors as app=redis, but won't work if pod is using different label(s):
+kubectl create service clusterip redis --tcp=6379:6379 --dry-run=client -o yaml
+
+Create a Service named nginx of type NodePort to expose pod nginx's port 80 on port 30080 on the nodes:
+kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml
+(This will automatically use the pod's labels as selectors, but you cannot specify the node port. You have to generate a definition file and then add the node port in manually before creating the service with the pod.)
+OR
+kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml
+(This will not use the pods labels as selectors)
+
+To get base64 encoded values to put it in secrets:
+echo -n '<plaintext>' | base64
+
+To decode:
+echo 'bGludXhoaW50LmNvbQo=' | base64 --decode
+
+To create configMap:
+kubectl create configmap <name> --from-literal=key=value
+
+to create secret:
+kubectl create secret generic <secret-name> --from-literal=key=value
+
+to list process running:
+ps aux
+
+if want to run container with different user:
+docker run --user=1000 ubuntu sleep 3600
+
+Note: By default docker container runs with root user but docker has limited its access. to add/remove privilege use --cap-add or --cap-drop and to run with full privilege use --privileged.
+docker run --privileged ubuntu sleep 3600
+
+To create serviceaccount
+kubectl create serviceaccount <accountn-name>
+
+Service account:
+1. Every namespace is associated with a serviceaccount. Default namespace has default service acccount.
+2. Every service account consist of secret and token
+3. to get token
+kubectl describe secret <secret-name>
+4. defautl serviceaccount has very limited access
+
+To get on a location in pod:
+kubectl exec -it my-kubernetes-dashboard ls /var/run/secrets/kubernetes.io/serviceaccount
+
+Taint and Tolerations:
+Taint is for nodes and Tolerations are for PODs.
+command for Taint:
+kubectl taint nodes <node-name> key=value:taint-effect
+kubectl taint NODE NAME KEY_1=VAL_1:TAINT_EFFECT_1 ... KEY_N=VAL_N:TAINT_EFFECT_N
+- to remove a taint, use the same command with "-" (minus) at the end
+taint effect: What happens to PODs that do not tolerate this taint? and possible values are NoSchedule, PreferNoSchedule (system will try to avoid placing the pod in the node but there is not guarantee) and NoExecute (for the exising pods in the node which do have toleration are evicted).
+Please note that this means a node will accept only a particular type of PODs but their is not guarantee that POD with toleration will run the that node only, it can run on other nodes as well they as they don't have taint.
+
+Master node has taint NoSchedule and so scheduler don't schedule any POD in it.
+
+Label nodes :
+- This is make sure that a pod will always run on a specific node
+kubectl label nodes <node-name> <label-key>=<label-value>
+note: We use nodeSelector under pod spec to choose the node. but we get advanced feature like OR or NOT with node selector.
+
+kubectl get nodes --show-labels
+
+NOde Affinity: it provides more advanced features like operators to choose nodes
+
+To list all container names inside a pod:
+kubectl get pods yellow -o jsonpath='{.spec.containers[*].name}'
+
+Ways to authenticate to kube-apiserver:
+1. using basic auth: --basic-auth-file=user-details.csv
+user-details.csv --> password,username,userid,groupname (groupname is optional)
+
+2. static token file: --token-auth-file=user-token-details.csv
+user-token-details.csv --> tokenid,username,userid,groupname
+
+3.
+
+2. 
+
+Ingress:
+-> It consist of two parts viz. Ingress controller (provider) and Ingress configuration resources (kubernetes object like deployment)
+-> There are multiple providers for ingress controller viz. Nginx, HAPROXY, traefix, Istio, Contour etc
+
+Ingress controller consist of:
+-> Deployment
+-> Service
+-> ConfigMap
+-> Auth (service account) to make necessary changes in Ingress resource as and when needed. Roles, cluster roles and Role bindings
+
+Annotations:
+nginx.ingress.kubernetes.io/rewrite-target: /
+nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+Deployment vs statefulset:
+--> deployment gives variable pod name while stateful set gives a fixed pod name
+--> statefulset deletes the pods in reverse order of creation and it maintains ordering number with pod name, so pod names are fixed. 
+--> statefulset insures stable storage for pods. We can mention volumeClaimTemplete in definition file and it will create volume for each pod and on pod restart or creation of new pod with same name it reallocates the existing corresponding pod
+
+Storage class:
+--> it is useful for dynamic volume provisioning and it automatically creates Persistent volume using provisioner in  the cloud provider (e.g. gce)
+
+Headless service:
+-> it doesn't have its own cluster IP and neither it does load balancing
+-> it creates DNS entry for each pod in below format:
+podname.headless-servicename.namespace.svc.cluster-domain
+e.g. mysql-0.mysql-h.default.svc.cluster.local
+-> specific changes for headless service:
+-In service definition file --> clusterIp: None
+-In pod definition file --> subdomain: mysql-h and hostname: mysql-pod under spec. But here it will create same DNS entry for all the PODs
+-So to avoid that we use statefulset with serviceName: mysql-h under spec
+
+To get size of each docker image layer:
+docker history <image-name>
+
+ABAC (Attribute based authorization control):
+--here we maintains "policy" objects and after every change in policy, we need to restart the kube-api server
+
+Role and role binding:
+-> role and role bindings are specific to namespace and can be mentioned under metadata of definition.
+
+
+cluster role:
+-> cluster roles can be used for namespace resources, just that they get access to the resource across all the namespaces.
+
+To check access:
+kubectl auth can-i create deployments
+kubectl auth can-i delete nodes
+
+flow:
+kubectl --> authentication --> authorization --> admission controllers --> create pod
+
+Admission controllers:
+--> e.g. AlwaysPullImages, DefaultStorageClass, EventRateLimit, NamespaceExists, etc.
+kubectl exec kube-apiserver-minikube -n kube-system -- kube-apiserver -h | grep enable-admission-plugins
+kubectl exec kube-apiserver-controlplane -n kube-system -- kube-apiserver -h | grep enable-admission-plugins
+--> there are non-default admission controller (e.g. NamespaceAutoProvision) that can be enabled by changing kube-apiserver.yaml under /etc/kubernetes/manifests/
+--> Types:
+--Mutating admission controller : which mutates the request. e.g. DefaultStorageClass which mutates the request to use default storage class if not mentioned in the request (definition)
+--Validating admssion controller: which just validates the request.
+--> Mutating admission controller followed by validating.
+
+
+To change the api version:
+kubectl convert -f <old-file> --output-version <new-api>
+
+--> we can create custom resource using custom resource definition (CRD)
+
+
+--pod logs--
+kubectl logs -f <pod-name> <container-name>
+
+--to check logs of a particular container--
+k -n mercury logs <pod-name> -c <container-name>
+
+--to check details of current context including namespace--
+kubectl config view --minify
+
+--monitoring--
+minikube addons enable metrics-server
+kubectl top node //to view performance metrics of nodes i.e. CPU and memory consumption
+kubectl top pod //for pod
+
+
+
+
+
+
+To get list of non namespaced resources (cluster scoped):
+kubectl api-resources --namespaced=false
+
+
+--troubleshooting
+--to test connection from pod to service
+kubectl exec -it webapp-color --sh
+nc -v -z -w 2 <service-name> 80
+
+--check network policy
+kubectl get netpol
+kubectl describe netpol
+
+kubectl get pod --show-labels
+
+--update image of a deployment:
+kubectl set image deployment <deploy-name> nginx=nginx:1.17
+
+--to replace a pod
+kubectl replace -f <definition-yaml> --force
+
+--to keep listening the get
+watch kubectl get jobs
+
+Deployment strategy:
+
+strategy:
+	rollingUpdate:
+		maxSurge: 1
+		maxUnavailable: 2
+		
+		
+Kubeconfig:
+--to view current config:
+kubectl config view
+--to switch context
+kubectl config use-context <context-name>
+
+		
+Helm Commands:
+helm search hub wordpress //search in artifacthub
+helm repo add bitnami https://charts.bitnami.com/bitnami //add other repository
+helm search repo wordpress //searches in added repo
+helm list repo
+
+helm install [release-name] [chart-name]
+helm list
+helm uninstall my-release-name
+helm pull --untar bitnami/wordpress
+ls wordpress
+helm install release-4 ./wordpress
+
+helm -n mercury ls
+helm repo list
+helm repo update
+helm search repo nginx //here intention is to upgrade bitnami/nginx chart and this will list latest version in repo
+helm -n mercury upgrade <helm-chart-name> bitnami/nginx
+
+helm status [release-name]
+helm get manifest [release-name]
+helm history [release]
+
+
+helm create [chart-name] #to scaffold out a chart directory structure
+helm template [Name] [Chart] #this is very helpful to check the template before installing an existing chart
+helm package [chart] #it packages it to tgz and it can be pushed to repo
+helm link [Chart] #to test out the chart
+helm install ... --dry-run # to test out the changes before install
+helm repo index . #
+
+
+#install a new release, with a customised values setting
+helm show values bitnami/apache
+helm -n mercury install internal-issue-report-apache bitnami/apache --set replicaCount=2
+helm -n mercury ls
+k -n mercury get deploy internal-issue-report-apache
+
+helm -n mercury ls -a //to show all status including pending-install 
+
+
+Resources:
+https://github.com/mmumshad/kubernetes-the-hard-way
+#difference between target port, port and nodeport
+https://stackoverflow.com/questions/49981601/difference-between-targetport-and-port-in-kubernetes-service-definition
+https://www.linkedin.com/pulse/my-ckad-exam-experience-atharva-chauthaiwale/
+https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands
+https://www.padok.fr/en/blog/kubernetes-probes
+--to check the API group
+https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22
+--Helm charts repository--
+https://artifacthub.io/ 
+--Kubernetes operator hub--
+https://operatorhub.io/
+--other helm chart repository--
+https://charts.bitnami.com/bitnami
+--Helm hub--
+https://hub.helm.sh
+https://killer.sh/attendee/cf61681c-7bc2-463f-bd54-d1db6a495a16/content
+https://killer.sh/attendee/cf61681c-7bc2-463f-bd54-d1db6a495a16
+
+--CKAD--
+https://github.com/dgkanatsios/CKAD-exercises
+https://github.com/jamesbuckett?tab=repositories
+https://medium.com/bb-tutorials-and-thoughts/practice-enough-with-these-questions-for-the-ckad-exam-2f42d1228552
+https://blog.getambassador.io/ckad-exam-tips-how-to-use-the-vim-editor-2be2a3283327?gi=c8d044c6e15e
+https://cloudacademy.com/resource/office-hours-ckad-prep-session-1-july-2021-824/
+https://cloudacademy.com/resource/office-hours-ckad-prep-session-2-august-2021-824/
+https://cloudacademy.com/resource/office-hours-ckad-exam-tips-tricks-and-best-practices-september-3rd-2020-824/
+https://cloudacademy.com/resource/webinar-office-hours-hands-on-tips-to-pass-the-ckad-exam/
+
+
+
+
+General concepts:
+Proxy: Where server is not aware of from where request is coming
+Reverse proxy: where client is not aware of from where response is coming. E.g. URL based routing where different URL is being served by different server but client is not aware of this.
+
+Must know docker commands:
+docker build Dockerfile -t <image-name>
+docker push <image-name>  
+
+
+----PRE Setup----
+alias k=kubectl                         # will already be pre-configured
+
+export do="--dry-run=client -o yaml"    # k create deploy nginx --image=nginx $do
+
+export now="--force --grace-period 0"   # k delete pod x $now
+
+VIM:
+set tabstop=2
+set expandtab
+set shiftwidth=2
+
+--sh to get status of a pod----
+# /opt/course/2/pod1-status-command.sh
+kubectl -n default describe pod pod1 | grep -i status:
+OR
+kubectl -n default get pod pod1 -o jsonpath="{.status.phase}"
+
+Additional commands:
+k -n neptune get pod,job | grep neb-new-job
+k -n saturn get pod -o yaml | grep my-happy-shop -A10
+
+#to get error
+k -n neptune get deploy,pod | grep api-new-c32  
+k -n neptune describe pod api-new-c32-7d64747c87-zh648 | grep -i error
+k -n neptune describe pod api-new-c32-7d64747c87-zh648 | grep -i image
+
+#fast way to get an overview of the ReplicaSets of a Deployment and their images could be done with:
+k -n neptune get rs -o wide | grep api-new-c32
+
+#temp pod to check connectivity with a service
+k run tmp --restart=Never --rm --image=nginx:alpine -i -- curl http://project-plt-6cc-svc.pluto:3333
+
+#Podman command
+podman build -t <image-name> . 
+podman image ls
+podman push <image-name>
+podman run -d --name <container-name> <image-name>:tag
+podman ps #to list the running containers 
+podman logs <container-name>
+
+#to check if pod can reach outside traffic
+k -n <namespace> exec <pod-name> -- wget -O- www.google.com
+
+#to check pod labels
+ k -n sun get pod --show-labels
+ 
+#Add the label on a pod with an exising label type=runner
+k -n sun label pod -l type=runner protected=true # run for label runner
+k -n sun label pod -l "type in (worker,runner)" protected=true
+
+  
+
+
+
+
+
+
+
+	
+		
+	
+
+	
