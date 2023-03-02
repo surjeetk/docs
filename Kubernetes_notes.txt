@@ -64,6 +64,9 @@ Volumes:
 		- persistentVolumeClaim - provides pods with a more persistent storage option that is abstracted from the details
 		- Cloud - cluster-wide storage 
 		
+		
+persistentVolumeReclaimPolicy: Retain/Delete/Recycle		
+		
 Key command-line switches for configMap:
 			--from-file
 			--from-env-file
@@ -99,6 +102,10 @@ kubectl get pods -o wide
 
 - to get details of the pod
 kubectl describe pods <pod_name>
+k describe pods <pod-name> --selector key=value -n <namespace>
+
+-to get number of rows from all concatenated pod logs for a given selector
+k logs -n <namespace> --selector key=value | wc -l
 
 - to get the service URL in minikube
 minikube service <service_name> --url
@@ -151,6 +158,9 @@ kubectl get pod <pod-name> -o yaml > pod-definition.yaml
 To edit pod properties:
 kubectl edit pod <pod-name>
 
+To edit deployment properties:
+kubectl edit deployment.apps <deployment-name>
+
 To scale pods:
 kubectl scale [--resource-version=version] [--current-replicas=count] --replicas=COUNT (-f FILENAME | TYPE NAME)
 kubectl scale --replicas=6 replicaset <replicaset-name>
@@ -165,7 +175,8 @@ kubectl config set-context $(kubectl config current-context) --namespace=dev
 kubectl config set-context --current --namespace=dev
 
 To list pods from all namespaces
-kubectl get pods --all-namespaces
+kubectl get pods --all-namespacesk 
+k get pods -A
 
 To create namespace:
 kubectl create namespace <namespace-name>
@@ -310,6 +321,10 @@ e.g. mysql-0.mysql-h.default.svc.cluster.local
 -In pod definition file --> subdomain: mysql-h and hostname: mysql-pod under spec. But here it will create same DNS entry for all the PODs
 -So to avoid that we use statefulset with serviceName: mysql-h under spec
 
+
+VolumeClaimTemplates:
+ --> this goes in pod template section of statefulsets if each POD needs to have its own volume.
+
 To get size of each docker image layer:
 docker history <image-name>
 
@@ -326,6 +341,7 @@ cluster role:
 To check access:
 kubectl auth can-i create deployments
 kubectl auth can-i delete nodes
+kubectl auth can-i get pods --as=system:serviceaccount:rbac-namespace:rbac-sa
 
 flow:
 kubectl --> authentication --> authorization --> admission controllers --> create pod
@@ -409,9 +425,10 @@ Helm Commands:
 helm search hub wordpress //search in artifacthub
 helm repo add bitnami https://charts.bitnami.com/bitnami //add other repository
 helm search repo wordpress //searches in added repo
-helm list repo
+helm repo list
 
 helm install [release-name] [chart-name]
+e.g. helm install wordpress-release2 bitnami/wordpress
 helm list
 helm uninstall my-release-name
 helm pull --untar bitnami/wordpress
@@ -422,7 +439,8 @@ helm -n mercury ls
 helm repo list
 helm repo update
 helm search repo nginx //here intention is to upgrade bitnami/nginx chart and this will list latest version in repo
-helm -n mercury upgrade <helm-chart-name> bitnami/nginx
+helm -n mercury upgrade <helm-release-name> <chart-name>
+
 
 helm status [release-name]
 helm get manifest [release-name]
@@ -432,18 +450,96 @@ helm history [release]
 helm create [chart-name] #to scaffold out a chart directory structure
 helm template [Name] [Chart] #this is very helpful to check the template before installing an existing chart
 helm package [chart] #it packages it to tgz and it can be pushed to repo
-helm link [Chart] #to test out the chart
-helm install ... --dry-run # to test out the changes before install
+helm lint [Chart] #to test out the chart
+helm install ... --dry-run # tk 
 helm repo index . #
+
+helm show values bitnami/node | grep -i replica
+helm install mynode bitnami/node --set replicaCount=5
 
 
 #install a new release, with a customised values setting
 helm show values bitnami/apache
 helm -n mercury install internal-issue-report-apache bitnami/apache --set replicaCount=2
 helm -n mercury ls
-k -n mercury get deploy internal-issue-report-apache
+#k -n mercury get deploy internal-issue-report-apache
 
 helm -n mercury ls -a //to show all status including pending-install 
+
+
+misc commands:
+--to get count of all rows of logs of pods with a given selector
+kubectl logs -n <namespace> --selector key=value | wc -l 
+
+--to copy file from a remote pod to local path 
+kubectl cp <some-namespace>/<some-pod>:/tmp/foo /tmp/bar
+
+--to get exit status of the last command
+echo $?
+
+--to add an additional label
+k label pods --selector key=value new_key=new_value
+
+--to get pods of given labels and print only pod name with sort by on IP
+k get pods --selector 'app in (web)' -o wide --sort-by=.status.podIP -o custom-columns='POD_NAME:.metadata.name' --no-headers
+
+--to check env of a pod
+kubectl exec -it <podname> -- env 
+
+--explicitly mention kubernetes version in minikube
+minikube start --kubernetes-version v1.18.0
+
+--autocompletion setup
+source <(kubectl completion bash)
+echo "source <(kubectl completion bash)" >> ~/.bashrc
+
+#to watch the status change 
+kubectl get pod --watch
+
+#current namespace:
+k config view | grep namespace
+
+#set default namespace in current context
+k config set-context --current --namespace storage-namespace
+
+#if pod crashed and restarted. Get logs of previous instance
+kubectl logs nginx --previous
+kubectl logs nginx -p
+
+
+
+to test another service
+k run create --image=appropirate/curl --rm --it ---n <namespace> --restart=OnFailure --curl -i http://<service-name>:port
+
+
+to get pod ip
+podIP=$(k get pods pod1 -o jsonpath='{.status.podIP}')
+
+ping another pod:
+k exec pod2 -it -- ping $podIP
+
+--Create 3 pods with names nginx1,nginx2,nginx3. All of them should have the label app=v1
+for i in `seq 1 3`; do k run nginx$i --image=nginx --restart=Never -l app=v1; done
+
+
+--Add a new label tier=web to all pods having 'app=v2' or 'app=v1' labels
+ k label pods -l 'app in (v1,v2)' tier=web
+ 
+--Get the label 'app' for the pods (show a column with APP labels)
+kubectl get po -L app
+# or
+kubectl get po --label-columns=app
+
+--remove label status from pods having label status
+ k label po -l status status-
+
+--annotate multiple pods with single command
+kubectl annotate po nginx1 nginx2 nginx3 description='my description'
+kubectl annotate po nginx{1..3} description='my description'
+
+
+
+
 
 
 Resources:
@@ -477,6 +573,11 @@ https://cloudacademy.com/resource/office-hours-ckad-exam-tips-tricks-and-best-pr
 https://cloudacademy.com/resource/webinar-office-hours-hands-on-tips-to-pass-the-ckad-exam/
 
 
+--to read:
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes
+
+
 
 
 General concepts:
@@ -486,6 +587,12 @@ Reverse proxy: where client is not aware of from where response is coming. E.g. 
 Must know docker commands:
 docker build Dockerfile -t <image-name>
 docker push <image-name>  
+
+# Create a TAR file from the image file
+docker save --output my-image.tar my-image:v0.1
+
+# Run the docker image
+docker run -it --rm -d -p 8080:80 --name my-container my-image:v0.1
 
 
 ----PRE Setup----
@@ -539,9 +646,60 @@ k -n <namespace> exec <pod-name> -- wget -O- www.google.com
 k -n sun label pod -l type=runner protected=true # run for label runner
 k -n sun label pod -l "type in (worker,runner)" protected=true
 
+
+--copy paste contents:
+cat << eof > file.yaml
+[paste contents here]
+eof
+
+--without creating file:
+cat << eof | kubectl apply -f - 
+[paste contents here]
+eof
+
+--canary deployment testing
+export temp="run tmp --restart=Never --rm --image=nginx:alpine -i -- " 
+k $temp /bin/sh -c "while sleep 1.5; do curl -s <cluster-ip>; done"
+
+--to print the environmet variables of a pod:
+k exec -it PODNAME -- env
+
+
+--collect failed pods namespace by namespace
+kubectl get events -o json | jq -r '.items[] | select(.message | contains("failed liveness probe")).involvedObject | .namespace + "/" + .name'
+
+--create pod and expose it in the same command:
+kubectl run nginx --image=nginx --restart=Never --port=80 --expose
+
+--here container port is on 80 and svc is exposed on port 8080
+kubectl expose deployment my-deployment --port=8080 --target-port=80
+
+-- list all the pods in the cluster sort by CPU consumption.
+kubectl top pods -A --sort-by=cpu | more
+kubectl top pods -A --sort-by=memory | more
+
+--Output all the events for all namespaces by creation date.
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+
+--Give the command to list out all the available API groups on your cluster. Then list out the API's in the named group.
+
+kubectl proxy &
+curl http://localhost:8001 | more
+
+--names apis ( /apis)
+curl http://localhost:8001/apis | grep "name" | more
+
   
 
+#to read documentation
+kubectl explain pod.spec
+https://spot.io/resources/kubernetes-architecture/11-core-components-explained/
 
+#to test network policy on minikube:
+https://medium.com/@atsvetkov906090/enable-network-policy-on-minikube-f7e250f09a14
+
+#vim indentation
+https://stackoverflow.com/questions/9549729/vim-insert-the-same-characters-across-multiple-lines
 
 
 
