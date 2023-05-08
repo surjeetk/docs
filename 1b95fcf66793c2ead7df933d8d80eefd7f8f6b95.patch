@@ -1,0 +1,143 @@
+From dfcc71835b1641e719a68ef4a2eba07bbb704644 Mon Sep 17 00:00:00 2001
+From: Surjeet <karmakarsurjeet@gmail.com>
+Date: Mon, 8 May 2023 20:54:40 +0530
+Subject: [PATCH 1/2] changes for 2 leds
+
+---
+ examples/light/main/app_driver.cpp | 39 +++++++++++++++---------------
+ examples/light/main/app_main.cpp   | 25 +++++++++++++------
+ 2 files changed, 38 insertions(+), 26 deletions(-)
+
+diff --git a/examples/light/main/app_driver.cpp b/examples/light/main/app_driver.cpp
+index 17cbc7a..8fa3b6f 100644
+--- a/examples/light/main/app_driver.cpp
++++ b/examples/light/main/app_driver.cpp
+@@ -55,7 +55,8 @@ static esp_err_t app_driver_light_set_temperature(led_driver_handle_t handle, es
+ static void app_driver_button_toggle_cb(void *arg, void *data)
+ {
+     ESP_LOGI(TAG, "Toggle button pressed");
+-    uint16_t endpoint_id = light_endpoint_id;
++    /* Pressing toggle button only toggles the led on endpoint 1 */
++    uint16_t endpoint_id = 1;
+     uint32_t cluster_id = OnOff::Id;
+     uint32_t attribute_id = OnOff::Attributes::OnOff::Id;
+ 
+@@ -74,26 +75,26 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
+                                       uint32_t attribute_id, esp_matter_attr_val_t *val)
+ {
+     esp_err_t err = ESP_OK;
+-    if (endpoint_id == light_endpoint_id) {
+-        led_driver_handle_t handle = (led_driver_handle_t)driver_handle;
+-        if (cluster_id == OnOff::Id) {
+-            if (attribute_id == OnOff::Attributes::OnOff::Id) {
+-                err = app_driver_light_set_power(handle, val);
+-            }
+-        } else if (cluster_id == LevelControl::Id) {
+-            if (attribute_id == LevelControl::Attributes::CurrentLevel::Id) {
+-                err = app_driver_light_set_brightness(handle, val);
+-            }
+-        } else if (cluster_id == ColorControl::Id) {
+-            if (attribute_id == ColorControl::Attributes::CurrentHue::Id) {
+-                err = app_driver_light_set_hue(handle, val);
+-            } else if (attribute_id == ColorControl::Attributes::CurrentSaturation::Id) {
+-                err = app_driver_light_set_saturation(handle, val);
+-            } else if (attribute_id == ColorControl::Attributes::ColorTemperatureMireds::Id) {
+-                err = app_driver_light_set_temperature(handle, val);
+-            }
++
++    led_driver_handle_t handle = (led_driver_handle_t)driver_handle;
++    if (cluster_id == OnOff::Id) {
++        if (attribute_id == OnOff::Attributes::OnOff::Id) {
++            err = app_driver_light_set_power(handle, val);
++        }
++    } else if (cluster_id == LevelControl::Id) {
++        if (attribute_id == LevelControl::Attributes::CurrentLevel::Id) {
++            err = app_driver_light_set_brightness(handle, val);
++        }
++    } else if (cluster_id == ColorControl::Id) {
++        if (attribute_id == ColorControl::Attributes::CurrentHue::Id) {
++            err = app_driver_light_set_hue(handle, val);
++        } else if (attribute_id == ColorControl::Attributes::CurrentSaturation::Id) {
++            err = app_driver_light_set_saturation(handle, val);
++        } else if (attribute_id == ColorControl::Attributes::ColorTemperatureMireds::Id) {
++            err = app_driver_light_set_temperature(handle, val);
+         }
+     }
++
+     return err;
+ }
+ 
+diff --git a/examples/light/main/app_main.cpp b/examples/light/main/app_main.cpp
+index 64480a1..c2d8daf 100644
+--- a/examples/light/main/app_main.cpp
++++ b/examples/light/main/app_main.cpp
+@@ -5,7 +5,6 @@
+    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+    CONDITIONS OF ANY KIND, either express or implied.
+ */
+-
+ #include <esp_err.h>
+ #include <esp_log.h>
+ #include <nvs_flash.h>
+@@ -19,8 +18,10 @@
+ 
+ #include <app/server/CommissioningWindowManager.h>
+ #include <app/server/Server.h>
++#include <led_driver.h>
+ static const char *TAG = "app_main";
+-uint16_t light_endpoint_id = 0;
+-uint16_t second_light_endpoint_id = 0;
+ 
+ using namespace esp_matter;
+ using namespace esp_matter::attribute;
+@@ -128,7 +129,17 @@ extern "C" void app_main()
+     nvs_flash_init();
+ 
+     /* Initialize driver */
+-    app_driver_handle_t light_handle = app_driver_light_init();
++    //app_driver_handle_t light_handle = app_driver_light_init(GPIO_NUM_18);
++    //app_driver_handle_t light_handle2 = app_driver_light_init(GPIO_NUM_18);
++
++    led_driver_config_t config_led_1 = {.gpio = 26};
++    led_driver_config_t config_led_2 = {.gpio = 27};
++
++    led_driver_handle_t handle_led_1 = led_driver_init(&config_led_1);
++    led_driver_handle_t handle_led_2 = led_driver_init(&config_led_2);
++
++
++
+     app_driver_handle_t button_handle = app_driver_button_init();
+     app_reset_button_register(button_handle);
+ 
+@@ -144,15 +155,14 @@ extern "C" void app_main()
+     light_config.color_control.color_mode = EMBER_ZCL_COLOR_MODE_COLOR_TEMPERATURE;
+     light_config.color_control.enhanced_color_mode = EMBER_ZCL_COLOR_MODE_COLOR_TEMPERATURE;
+     light_config.color_control.color_temperature.startup_color_temperature_mireds = nullptr;
+-    endpoint_t *endpoint = extended_color_light::create(node, &light_config, ENDPOINT_FLAG_NONE, light_handle);
++    endpoint_t *endpoint1 = extended_color_light::create(node, &light_config, ENDPOINT_FLAG_NONE, handle_led_1);
++    endpoint_t *endpoint2 = extended_color_light::create(node, &light_config, ENDPOINT_FLAG_NONE, handle_led_2);
+ 
+     /* These node and endpoint handles can be used to create/add other endpoints and clusters. */
+-    if (!node || !endpoint) {
++    if (!node || !endpoint1 || !endpoint2) {
+         ESP_LOGE(TAG, "Matter node creation failed");
+     }
+ 
+-    light_endpoint_id = endpoint::get_id(endpoint);
+-    ESP_LOGI(TAG, "Light created with endpoint_id %d", light_endpoint_id);
+ 
+     /* Matter start */
+     err = esp_matter::start(app_event_cb);
+@@ -161,7 +171,8 @@ extern "C" void app_main()
+     }
+ 
+     /* Starting driver with default values */
+-    app_driver_light_set_defaults(light_endpoint_id);
++    app_driver_light_set_defaults(1);
++    app_driver_light_set_defaults(2);
+ 
+ #if CONFIG_ENABLE_CHIP_SHELL
+     esp_matter::console::diagnostics_register_commands();
+-- 
+2.23.0.windows.1
+
