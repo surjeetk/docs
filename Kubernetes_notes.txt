@@ -100,6 +100,12 @@ kubectl get svc
 -to get pod IP
 kubectl get pods -o wide
 
+--sort by
+kubectl get pods -n <namespace> --sort-by=metadata.creationTimestamp
+
+--export option 
+#kubectl get pod <podname> --export  //this will give minimal manifest file
+
 - to get details of the pod
 kubectl describe pods <pod_name>
 k describe pods <pod-name> --selector key=value -n <namespace>
@@ -110,9 +116,12 @@ k logs -n <namespace> --selector key=value | wc -l
 - to get the service URL in minikube
 minikube service <service_name> --url
 
+#to enable api server swagger-ui
+minikube start --memory=6144 --cpus=4 --vm-driver=xhyve --extra-config=apiserver.enable-swagger-ui=true 
+
 - to get list of deploy
 kubectl get deploy
-
+ss
 - to get list of replica set
 kubectl get rs
 
@@ -125,8 +134,13 @@ kubectl rollout status deploy web-deploy
 - to check deployment revisions
 kubectl rollout history deploy web-deploy
 
-- to undo deployment
+- to undo deployments
 kubectl rollout undo deploy web-deploy --to-revision=1
+
+kubectl rollout pause deploy webapp
+kubectl rollout resume deploy webapp
+
+k get hpa #horizontal pod autoscaler
 
 - viewing a Pod's volumes
 1. Desribe pods
@@ -147,7 +161,7 @@ kubectl create secret generic my-secret --from-literal=pwd=my-password
 kubectl create secret generic my-secret --from-file=ssh-privatekey=~/.ssh/id_rsa
 kubectl create secret generic my-secret --from-file=ssh-publickey=~/.ssh/id_rsa.pub
 
-kubectl create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.key
+kubectl create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.keyk 
 
 kubectl get secrets
 kubectl get secrtes db-passwords -o yaml
@@ -175,7 +189,7 @@ kubectl config set-context $(kubectl config current-context) --namespace=dev
 kubectl config set-context --current --namespace=dev
 
 To list pods from all namespaces
-kubectl get pods --all-namespacesk 
+kubectl get pods --all-namespaces
 k get pods -A
 
 To create namespace:
@@ -303,6 +317,9 @@ Annotations:
 nginx.ingress.kubernetes.io/rewrite-target: /
 nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
+#to get ingress class
+k get ingressclasss
+
 Deployment vs statefulset:
 --> deployment gives variable pod name while stateful set gives a fixed pod name
 --> statefulset deletes the pods in reverse order of creation and it maintains ordering number with pod name, so pod names are fixed. 
@@ -342,6 +359,7 @@ To check access:
 kubectl auth can-i create deployments
 kubectl auth can-i delete nodes
 kubectl auth can-i get pods --as=system:serviceaccount:rbac-namespace:rbac-sa
+kubectl auth can-i create pods --as dev-user --namespace test
 
 flow:
 kubectl --> authentication --> authorization --> admission controllers --> create pod
@@ -356,9 +374,16 @@ kubectl exec kube-apiserver-controlplane -n kube-system -- kube-apiserver -h | g
 --Validating admssion controller: which just validates the request.
 --> Mutating admission controller followed by validating.
 
+#kube-apiserver config path: /etc/kubernetes/manifests/kube-apiserver.yaml
+
+--enable-admission-plugins
+--disable-admission-plugins
+
+#to watch the kubernetes processes
+watch crictl ps
 
 To change the api version:
-kubectl convert -f <old-file> --output-version <new-api>
+kubectl-convert -f <old-file> --output-version <new-api>
 
 --> we can create custom resource using custom resource definition (CRD)
 
@@ -376,6 +401,10 @@ kubectl config view --minify
 minikube addons enable metrics-server
 kubectl top node //to view performance metrics of nodes i.e. CPU and memory consumption
 kubectl top pod //for pod
+kubectl top pod busybox --containers //for containers
+
+// get the top 3 hungry pods
+kubectl top pod --all-namespaces | sort --reverse --key 3 --numeric | head -3
 
 
 
@@ -395,6 +424,11 @@ nc -v -z -w 2 <service-name> 80
 kubectl get netpol
 kubectl describe netpol
 
+notes for Network policies:
+1. Kubectl network plugin must support the network policy.
+2. If there are multiple network policies and if any of them allows traffic and other restricts from a particular pod/namespace/ip then overall it will allow.
+
+
 kubectl get pod --show-labels
 
 --update image of a deployment:
@@ -413,6 +447,10 @@ strategy:
 		maxSurge: 1
 		maxUnavailable: 2
 		
+strategy:
+	type: Recreate  #RollingUpdate is the default value
+			
+		
 		
 Kubeconfig:
 --to view current config:
@@ -420,7 +458,10 @@ kubectl config view
 --to switch context
 kubectl config use-context <context-name>
 
-		
+Operator framework: combination of CRD and Custom controller.
+operatorhub.io
+Operator Lifecycle Manager (OLM) - Manages the lifecycle of the operators.
+	
 Helm Commands:
 helm search hub wordpress //search in artifacthub
 helm repo add bitnami https://charts.bitnami.com/bitnami //add other repository
@@ -440,6 +481,7 @@ helm repo list
 helm repo update
 helm search repo nginx //here intention is to upgrade bitnami/nginx chart and this will list latest version in repo
 helm -n mercury upgrade <helm-release-name> <chart-name>
+helm rollback <relesename> -n <namespace>
 
 
 helm status [release-name]
@@ -525,10 +567,17 @@ for i in `seq 1 3`; do k run nginx$i --image=nginx --restart=Never -l app=v1; do
 --Add a new label tier=web to all pods having 'app=v2' or 'app=v1' labels
  k label pods -l 'app in (v1,v2)' tier=web
  
+ --to print the results row wise
+ k get pods -n rep  -l 'colour in (orange,red,yellow)' --sort-by=.status.podIP -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+ kubectl get po nginx -o jsonpath='{.spec.containers[].image}{"\n"}'
+ 
+ --List all the pods showing name and namespace with a json path expression
+ kubectl get pods -o=jsonpath="{.items[*]['metadata.name', 'metadata.namespace']}"
+ 
 --Get the label 'app' for the pods (show a column with APP labels)
 kubectl get po -L app
 # or
-kubectl get po --label-columns=app
+kubectl get po --label-columns=appss
 
 --remove label status from pods having label status
  k label po -l status status-
@@ -537,6 +586,10 @@ kubectl get po --label-columns=app
 kubectl annotate po nginx1 nginx2 nginx3 description='my description'
 kubectl annotate po nginx{1..3} description='my description'
 
+
+--to test connectivity from one pod to another pod (specially for testing netpol)
+use ping 
+k exec -it pod2 -- ping pod1_ip
 
 
 
@@ -561,6 +614,7 @@ https://charts.bitnami.com/bitnami
 https://hub.helm.sh
 https://killer.sh/attendee/cf61681c-7bc2-463f-bd54-d1db6a495a16/content
 https://killer.sh/attendee/cf61681c-7bc2-463f-bd54-d1db6a495a16
+https://killer.sh/attendee/4eec3998-480a-4309-9864-243a9ed161b5
 
 --CKAD--
 https://github.com/dgkanatsios/CKAD-exercises
@@ -701,10 +755,14 @@ https://medium.com/@atsvetkov906090/enable-network-policy-on-minikube-f7e250f09a
 #vim indentation
 https://stackoverflow.com/questions/9549729/vim-insert-the-same-characters-across-multiple-lines
 
+#Vim Shortcuts
+https://scaron.info/blog/vim-keyboard-shortcuts.html
 
 
+https://training.linuxfoundation.org/certification/certified-kubernetes-application-developer-ckad/
 
 
+https://medium.com/@mohllal/kubernetes-sidecar-container-injection-61ecfcc7b22b
 	
 		
 	
