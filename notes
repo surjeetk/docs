@@ -284,3 +284,18 @@ http://cloudurable.com/blog/kafka-ecosystem/index.html
 -> Real life use case (How world is using it), bit theory
 -> Properties and prod config analysis
 -> 
+
+
+kubectl create secret docker-registry gitlab-registry-secret \
+    --docker-server=registry.gitlab.com \
+    --docker-username=<your-gitlab-username> \
+    --docker-password=<your-gitlab-personal-access-token> \
+    --docker-email=<your-email>
+
+
+spec:
+      containers:
+        - name: example-container
+          image: registry.gitlab.com/your-group/your-project:latest
+      imagePullSecrets:
+        - name: gitlab-registry-secret
