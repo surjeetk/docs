@@ -388,16 +388,16 @@ echo "New Volume ID: $NEW_VOLUME_ID"
 #-----------------------create_pvc_from_volume.sh----------------------------------
 #!/bin/bash
 
-# Check if new PVC name, volume ID, and existing PVC name are provided
-if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
-  echo "Usage: $0 <new-pvc-name> <new-volume-id> <existing-pvc-name>"
+# Check if all required inputs are provided
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
+  echo "Usage: $0 <existing-pvc-name> <new-pvc-name> <snapshot-id> <namespace>"
   exit 1
 fi
 
-NEW_PVC_NAME=$1
-NEW_VOLUME_ID=$2
-EXISTING_PVC_NAME=$3
-NAMESPACE="default"  # Adjust the namespace as needed
+EXISTING_PVC_NAME=$1
+NEW_PVC_NAME=$2
+SNAPSHOT_ID=$3
+NAMESPACE=$4
 
 # Fetch existing PVC metadata
 PVC_JSON=$(kubectl get pvc $EXISTING_PVC_NAME -n $NAMESPACE -o json)
@@ -422,6 +422,36 @@ fi
 # Extract necessary information from the existing PV
 VOLUME_MODE=$(echo $PV_JSON | jq -r '.spec.volumeMode')
 PV_RECLAIM_POLICY=$(echo $PV_JSON | jq -r '.spec.persistentVolumeReclaimPolicy')
+VOLUME_HANDLER=$(kubectl get pv $EXISTING_PV_NAME -o jsonpath='{.spec.csi.volumeHandle}')
+
+# Retrieve metadata from the original volume
+METADATA=$(aws ec2 describe-volumes --volume-ids $VOLUME_HANDLER --query 'Volumes[0]')
+if [ -z "$METADATA" ]; then
+  echo "Failed to retrieve volume metadata"
+  exit 1
+fi
+
+TAGS=$(echo $METADATA | jq -r '.Tags')
+KMS_KEY_ID=$(echo $METADATA | jq -r '.KmsKeyId')
+VOLUME_TYPE=$(echo $METADATA | jq -r '.VolumeType')
+AVAILABILITY_ZONE=$(echo $METADATA | jq -r '.AvailabilityZone')
+SIZE=$(echo $METADATA | jq -r '.Size')
+
+# Create a new volume from the snapshot
+NEW_VOLUME_ID=$(aws ec2 create-volume --snapshot-id $SNAPSHOT_ID --availability-zone $AVAILABILITY_ZONE --volume-type $VOLUME_TYPE --size $SIZE --encrypted --kms-key-id $KMS_KEY_ID --query VolumeId --output text)
+if [ -z "$NEW_VOLUME_ID" ]; then
+  echo "Failed to create new volume"
+  exit 1
+fi
+
+echo "New Volume ID: $NEW_VOLUME_ID"
+
+# Apply tags to the new volume
+aws ec2 create-tags --resources $NEW_VOLUME_ID --tags "$TAGS"
+if [ $? -ne 0 ]; then
+  echo "Failed to apply tags to new volume"
+  exit 1
+fi
 
 # Generate unique PV name
 NEW_PV_NAME="${NEW_PVC_NAME}-pv"
