@@ -342,31 +342,6 @@ fi
 echo "Snapshot ID: $SNAPSHOT_ID"
 
 #-----------------------create_volume_from_snapshot.sh----------------------------------
-#!/bin/bash
-
-# Check if Snapshot ID and PVC name are provided
-if [ -z "$1" ] || [ -z "$2" ]; then
-  echo "Usage: $0 <snapshot-id> <pvc-name>"
-  exit 1
-fi
-
-SNAPSHOT_ID=$1
-PVC_NAME=$2
-NAMESPACE="default"  # Adjust the namespace as needed
-
-# Get PV name from PVC
-PV_NAME=$(kubectl get pvc $PVC_NAME -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
-if [ -z "$PV_NAME" ]; then
-  echo "No PV found for PVC $PVC_NAME"
-  exit 1
-fi
-
-# Get volume handler (EBS volume ID) from PV
-VOLUME_HANDLER=$(kubectl get pv $PV_NAME -o jsonpath='{.spec.csi.volumeHandle}')
-if [ -z "$VOLUME_HANDLER" ]; then
-  echo "No volume handler found for PV $PV_NAME"
-  exit 1
-fi
 
 echo "PVC Name: $PVC_NAME"
 echo "PV Name: $PV_NAME"
@@ -413,21 +388,43 @@ echo "New Volume ID: $NEW_VOLUME_ID"
 #-----------------------create_pvc_from_volume.sh----------------------------------
 #!/bin/bash
 
-# Check if PVC name and volume ID are provided
-if [ -z "$1" ] || [ -z "$2" ]; then
-  echo "Usage: $0 <new-pvc-name> <volume-id>"
+# Check if new PVC name, volume ID, and existing PVC name are provided
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+  echo "Usage: $0 <new-pvc-name> <new-volume-id> <existing-pvc-name>"
   exit 1
 fi
 
 NEW_PVC_NAME=$1
 NEW_VOLUME_ID=$2
+EXISTING_PVC_NAME=$3
 NAMESPACE="default"  # Adjust the namespace as needed
+
+# Fetch existing PVC metadata
+PVC_JSON=$(kubectl get pvc $EXISTING_PVC_NAME -n $NAMESPACE -o json)
+if [ $? -ne 0 ]; then
+  echo "Failed to fetch PVC $EXISTING_PVC_NAME"
+  exit 1
+fi
+
+# Extract necessary information from the existing PVC
+STORAGE_CLASS=$(echo $PVC_JSON | jq -r '.spec.storageClassName')
+ACCESS_MODES=$(echo $PVC_JSON | jq -r '.spec.accessModes')
+STORAGE=$(echo $PVC_JSON | jq -r '.spec.resources.requests.storage')
+
+# Fetch the PV associated with the existing PVC
+EXISTING_PV_NAME=$(kubectl get pvc $EXISTING_PVC_NAME -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+PV_JSON=$(kubectl get pv $EXISTING_PV_NAME -o json)
+if [ $? -ne 0 ]; then
+  echo "Failed to fetch PV $EXISTING_PV_NAME"
+  exit 1
+fi
+
+# Extract necessary information from the existing PV
+VOLUME_MODE=$(echo $PV_JSON | jq -r '.spec.volumeMode')
+PV_RECLAIM_POLICY=$(echo $PV_JSON | jq -r '.spec.persistentVolumeReclaimPolicy')
 
 # Generate unique PV name
 NEW_PV_NAME="${NEW_PVC_NAME}-pv"
-
-# Define storage class, adjust if necessary
-STORAGE_CLASS="gp2"
 
 # Create PV YAML
 PV_YAML=$(cat <<EOF
@@ -437,11 +434,10 @@ metadata:
   name: ${NEW_PV_NAME}
 spec:
   capacity:
-    storage: 20Gi  # Adjust size as needed
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
+    storage: ${STORAGE}
+  volumeMode: ${VOLUME_MODE}
+  accessModes: ${ACCESS_MODES}
+  persistentVolumeReclaimPolicy: ${PV_RECLAIM_POLICY}
   storageClassName: ${STORAGE_CLASS}
   csi:
     driver: ebs.csi.aws.com
@@ -457,12 +453,11 @@ metadata:
   name: ${NEW_PVC_NAME}
   namespace: ${NAMESPACE}
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessModes: ${ACCESS_MODES}
   storageClassName: ${STORAGE_CLASS}
   resources:
     requests:
-      storage: 20Gi  # Adjust size as needed
+      storage: ${STORAGE}
   volumeName: ${NEW_PV_NAME}
 EOF
 )
