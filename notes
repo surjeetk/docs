@@ -299,3 +299,186 @@ spec:
           image: registry.gitlab.com/your-group/your-project:latest
       imagePullSecrets:
         - name: gitlab-registry-secret
+
+
+#-----------------------Create snapshot----------------------------------
+#!/bin/bash
+
+# Check if PVC name is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <pvc-name>"
+  exit 1
+fi
+
+PVC_NAME=$1
+NAMESPACE="default"  # Adjust the namespace as needed
+
+# Get PV name from PVC
+PV_NAME=$(kubectl get pvc $PVC_NAME -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+if [ -z "$PV_NAME" ]; then
+  echo "No PV found for PVC $PVC_NAME"
+  exit 1
+fi
+
+# Get volume handler (EBS volume ID) from PV
+VOLUME_HANDLER=$(kubectl get pv $PV_NAME -o jsonpath='{.spec.csi.volumeHandle}')
+if [ -z "$VOLUME_HANDLER" ]; then
+  echo "No volume handler found for PV $PV_NAME"
+  exit 1
+fi
+
+echo "PVC Name: $PVC_NAME"
+echo "PV Name: $PV_NAME"
+echo "Volume Handler: $VOLUME_HANDLER"
+
+# Create snapshot
+SNAPSHOT_DESC="Snapshot of volume $VOLUME_HANDLER from PVC $PVC_NAME"
+SNAPSHOT_ID=$(aws ec2 create-snapshot --volume-id $VOLUME_HANDLER --description "$SNAPSHOT_DESC" --query SnapshotId --output text)
+if [ -z "$SNAPSHOT_ID" ]; then
+  echo "Failed to create snapshot"
+  exit 1
+fi
+
+echo "Snapshot ID: $SNAPSHOT_ID"
+
+#-----------------------create_volume_from_snapshot.sh----------------------------------
+#!/bin/bash
+
+# Check if Snapshot ID and PVC name are provided
+if [ -z "$1" ] || [ -z "$2" ]; then
+  echo "Usage: $0 <snapshot-id> <pvc-name>"
+  exit 1
+fi
+
+SNAPSHOT_ID=$1
+PVC_NAME=$2
+NAMESPACE="default"  # Adjust the namespace as needed
+
+# Get PV name from PVC
+PV_NAME=$(kubectl get pvc $PVC_NAME -n $NAMESPACE -o jsonpath='{.spec.volumeName}')
+if [ -z "$PV_NAME" ]; then
+  echo "No PV found for PVC $PVC_NAME"
+  exit 1
+fi
+
+# Get volume handler (EBS volume ID) from PV
+VOLUME_HANDLER=$(kubectl get pv $PV_NAME -o jsonpath='{.spec.csi.volumeHandle}')
+if [ -z "$VOLUME_HANDLER" ]; then
+  echo "No volume handler found for PV $PV_NAME"
+  exit 1
+fi
+
+echo "PVC Name: $PVC_NAME"
+echo "PV Name: $PV_NAME"
+echo "Volume Handler: $VOLUME_HANDLER"
+
+# Retrieve metadata from the original volume
+METADATA=$(aws ec2 describe-volumes --volume-ids $VOLUME_HANDLER --query 'Volumes[0]')
+if [ -z "$METADATA" ]; then
+  echo "Failed to retrieve volume metadata"
+  exit 1
+fi
+
+TAGS=$(echo $METADATA | jq -r '.Tags')
+KMS_KEY_ID=$(echo $METADATA | jq -r '.KmsKeyId')
+VOLUME_TYPE=$(echo $METADATA | jq -r '.VolumeType')
+AVAILABILITY_ZONE=$(echo $METADATA | jq -r '.AvailabilityZone')
+SIZE=$(echo $METADATA | jq -r '.Size')
+
+echo "Tags: $TAGS"
+echo "KMS Key ID: $KMS_KEY_ID"
+echo "Volume Type: $VOLUME_TYPE"
+echo "Availability Zone: $AVAILABILITY_ZONE"
+echo "Size: $SIZE"
+
+# Create a new volume from the snapshot
+NEW_VOLUME_ID=$(aws ec2 create-volume --snapshot-id $SNAPSHOT_ID --availability-zone $AVAILABILITY_ZONE --volume-type $VOLUME_TYPE --size $SIZE --encrypted --kms-key-id $KMS_KEY_ID --query VolumeId --output text)
+if [ -z "$NEW_VOLUME_ID" ]; then
+  echo "Failed to create new volume"
+  exit 1
+fi
+
+echo "New Volume ID: $NEW_VOLUME_ID"
+
+# Apply tags to the new volume
+aws ec2 create-tags --resources $NEW_VOLUME_ID --tags "$TAGS"
+if [ $? -ne 0 ]; then
+  echo "Failed to apply tags to new volume"
+  exit 1
+fi
+
+echo "Old Volume ID: $VOLUME_HANDLER"
+echo "New Volume ID: $NEW_VOLUME_ID"
+
+#-----------------------create_pvc_from_volume.sh----------------------------------
+#!/bin/bash
+
+# Check if PVC name and volume ID are provided
+if [ -z "$1" ] || [ -z "$2" ]; then
+  echo "Usage: $0 <new-pvc-name> <volume-id>"
+  exit 1
+fi
+
+NEW_PVC_NAME=$1
+NEW_VOLUME_ID=$2
+NAMESPACE="default"  # Adjust the namespace as needed
+
+# Generate unique PV name
+NEW_PV_NAME="${NEW_PVC_NAME}-pv"
+
+# Define storage class, adjust if necessary
+STORAGE_CLASS="gp2"
+
+# Create PV YAML
+PV_YAML=$(cat <<EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ${NEW_PV_NAME}
+spec:
+  capacity:
+    storage: 20Gi  # Adjust size as needed
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ${STORAGE_CLASS}
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: ${NEW_VOLUME_ID}
+EOF
+)
+
+# Create PVC YAML
+PVC_YAML=$(cat <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${NEW_PVC_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ${STORAGE_CLASS}
+  resources:
+    requests:
+      storage: 20Gi  # Adjust size as needed
+  volumeName: ${NEW_PV_NAME}
+EOF
+)
+
+# Create the PV
+echo "$PV_YAML" | kubectl apply -f -
+if [ $? -ne 0 ]; then
+  echo "Failed to create PersistentVolume"
+  exit 1
+fi
+
+# Create the PVC
+echo "$PVC_YAML" | kubectl apply -f -
+if [ $? -ne 0 ]; then
+  echo "Failed to create PersistentVolumeClaim"
+  exit 1
+fi
+
+echo "Successfully created PVC ${NEW_PVC_NAME} using volume ID ${NEW_VOLUME_ID}"
