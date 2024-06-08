@@ -299,9 +299,9 @@ On-premise storage:
 	-Directly Attached Storage (DAS)
 -Tape Backup
 -Data storage categorization:
-	|_Block storage - low latency data access. Comparable to DAS storage used on premises. Blocks are stored on a volume attached to a sigle instance
-	|_File Storage - data is stored as seperate files with a series of directories. shared access is provided. Comparable to NAS storage used on premises
-	|_Object storage - Objects are stored accross a flat address space. Referenced by unique key. Each object can also have metadata to help categorize and identify the object.
+	|_Block storage - low latency data access. Comparable to DAS storage used on premises. Blocks are stored on a volume attached to a sigle instance. This type of storage is optimized for low latency access and when fast, concurrent read and write operations are needed.
+	|_File Storage - data is stored as seperate files with a series of directories. shared access is provided. Comparable to NAS storage used on premises. This type of storage allows you to store files that are accessible to network resources i.e. multiple EC2 instances can access a EFS.
+	|_Object storage - Objects are stored accross a flat address space. Referenced by unique key. Each object can also have metadata to help categorize and identify the object. This is suitable where files are written once and accessed many times.
 -Amazon S3 - Simple Storage Service. 
 	|_Fully managed object based storage service
 	|_Best fit for write once and read multiple times
@@ -311,30 +311,93 @@ On-premise storage:
 	|_Largest file size supported - 5 TB
 	|_Numerous copy of same data in different AZs
 	|_limitations of 100 buckets per AWS account
+	|_ Durability: 99.999999999% (Eleven 9s)
+	|_ Availability: 99.5% - 99.99 %
 	|_Storage class
 		|_Standard - frequently accessed data
-		|_Standard IA (infrequently accessed data) - long lived
-		|_Intelligent Tiering - Long lived with changing or unknown access pattern
-		|_OneZone_IA - long lived, non -critical data
+		|_Standard IA (S3 S-IA) (infrequently accessed data) - long lived
+		|_Intelligent Tiering (S3 INT) - Long lived with changing or unknown access pattern
+		|_OneZone_IA (S3 Z-IA) - long lived, non -critical data
+		|_Glacier Instant Retrieval (S3 G-IR)
+		|_Glacier Flexible Retrieval (S3 G-FR)
+		|_Glacier Deep Archieve (S3 G-DA)
 		|_Reduced Redundancy Storage (RRS) [not recommended]- frequently accessed, non-critical data
 	|_Security
-		|_Bucket policy
+		|_Bucket policy 
 		|_Access Control Lists
 		|_Data Encryption
-	|_versioning -- by default it's disabled. once enabled it cannot be disabled, but can be suspended
-	|_Lifecycle rules
+	|_versioning
+		|_By default it's disabled. once enabled it cannot be disabled, but can be suspended which will stop versioning going forward but keep the existing versions.
+		|_If you delete an object having versioning enabled, it will not actually delete the object but will create a new version with (delete maker), so if you do get
+	|_Transfer acceleration:
+	    |_Ideally if possible try to keep EC2 and S3 in the same region to avoid latency and save transfer cost. If that is not possible then S3 transfer accelerator comes in rescue which uses edge locations for the fastest upload path.
+		|_It is for fast transfer of files from/to S3 bucket whithin/outside region and it achieves it through CloudFront.
+		|_It doesn't support:
+			|_GET Servcie (list buckets)
+			|_PUT Bucket (create bucket)
+			|_DELETE bucket
+			|_Cross region copies using PUT object - copy
+	|_S3 Multipart Upload:
+		|_Issue multiple PUT requests in parallel to improve throughput.
+		|_Required for objects >5 GB, recommended for objects > 100 MB.
+	|_Download Performance:
+		|_Think of S3 as a large, distributed system (not a single endpoint)
+		|_Improve download performance by issuing multiple concurrent GET requests.
+		|_Add Range to HTTP headers to perform a byte-range fetch.
+		|_Increase throughput by downloading smaller chunks at the same time.
+	|_OBJECT Lock:
+	    |_It prevents objects from being deleted to help ensure data integrity and regulatory compliance.
+		|_It can be enabled ONLY during creation of the bucket. Also, it needs versioning to be enabled.
+		|_Retention mode:
+		    |_ Modes:
+				|_Governance Mode: Object cannot be deleted for a set retention period. with permissions s3:BypassGovernanceMode,s3:GetObjectLockConfiguration and s3:GetObjectRetention you can bypass the rule and update the retention period too.
+				|_Compliance Mode: no one can delete the object for the retention period including root user.
+			|_It can be set at the object level as well. 
+			|_You can enable Legal hold that will protect the objects even after the retention period. With permission s3:PutObjectLegalHold you can disable the legal hold. It appears only at object version and not at bucket level.
+	|_Requester Pays:
+		|_Here requester get responsible for data transfer to S3, but to achieve that requester detail must be present in the header <x-amz-request-payer> and it should present every POST, GET and HEAD request.
+	|_Object ownership:
+		|_By default the account in which the S3 bucket gets created becomes the bucket owner and another account who creates objects in the S3 bucket becomes object owner of those objects. Now bucket owner by default doesn't have access to the object created by another object owner. We can change this behavior by changing object owership in bucket properties. 
+		|_Also there is Canned ACL which is a predefined grant that contains both grantees and permissions. The bucket-owner-full-control canned ACL applies to object only. 
+	|_Lifecycle rules - S3 Lifecycle configuration allows you to define rules to automatically transition objects between different storage classes or to expire (delete) objects after a specified period
+	|_Access control
+		|_Three ways to control the access:
+			|_IAM identity based policy
+				|_This will be associated with a group or user so no pricipal is mentioned in the policy.
+				|_Size restriction: max 2kb for users, 5kb for groups and 10kb for roles
+			|_Bucket Policy
+			 |_This does mention principal in the policy.
+			 |_It can reach size of 20kb
+			|_Bucket ACL
+				|_It can only allow permission but cannot deny
+		|_In general it follows, least privilege principle.
+		|_Explicit DENY to a principal will always take precendency even if it's Allowed through other policies or ACL
+		|_At Object level ACL you have only READ option
+	|_Encrypting Data:
+		|_When using SSE-KMS (Server Side Encryption), you need to ensure that you have the kms:GenerateDataKey permission to encrypt your objects, and the kms:Decrypt permission to then decrypt them again.
+		|_SSE-KMS with bucket key: while creation of bucket it fetches the bucket key from KMS once and it is then used for generating plain-text data key and encrypted key. This way it reduces the encryption cost by up to 99%.
+		|_SSE-C with customer provided key: Here customer provides key during both encryption and decryption but S3 generates salted HMAC value on top of it and saves it during encryption and during decryption it is being used to validate the customer provided key in the request and then decrypt the data using the customer provided key.
+		|_CSE-C: Here client generates a data key and its copy, it then get the copy encrypted using customer generated wrapping key and encrypt the data using the data key (not the encrypted one), it then sends the encrypted data and encrypted key. While decrypting it gets the same encrypted data and encrypted key which is then decrypted using the wrapping key, then the plain text key is being used to decrypt the ecrypted data. 
+	|_Minimum storage duration:
+		|_Some storage class has minimum duration associated with it and if you delete the object before that then still you will be charged for the whole minimum duration
+		|_ S3 standard and S3 intelligent Tiering has NO minimum duration
+		|_ S3 standard IA and S3 one zone-IA has 30 days min duration
+		|_S3 Glacier has 90 days
+		|_ S3 Glacier Deep archieve has 180 days
 	|_Not fit for
 		|_Data archiving for long term use
 		|_Dynamic and fast changing data
 		|_File system requirements
 		|_Structured data with queries
--Amazon Glacier:
+-Amazon S3 Glacier:
 			|_Best for data archival and data is not made available immediately and much cheaper than S3
+			|_Durability: Eleven 9s			
 			|_Data retrieval types
-				|_Expedited
-				|_Standard
-				|_Bulk
-			|_Vaults - act as a container for Galcier Archives, within vault we can store data as archieves
+				|_Expedited -- under 250 MB | Available within 5 mins | $$$
+				|_Standard -- Any size | Available in 3-5 hours | $$
+				|_Bulk -- PB of data at a time | Available in 5-12 hours | $
+			|_Vaults - act as a container for Galcier Archives, within vault we can store data as archieves. They are regional.
+			|_ S3 lifecycle rules/API/SDK/CLI can  be used to move or retrieve data to vaults
 -EC2 instance volume
 			|_Temporary storage with no additional cost
 			|_Idle for caching and high IO ops
@@ -355,7 +418,36 @@ On-premise storage:
 			|_has been designed to maintain high level of throughput
 			|_only compatiable with NFS 4.1 and 4.0
 			|_Limitless capacity. Storage capacity grows with use.
-			|_does not support encryption in transit
+			|_Uses TLS for encryption in transit. 
+				|_ mount helper command with TLS: sudo mount -t efs -o tls fs-12345678:/ /mnt/efs
+				|_ This will ensure that the mount helper creates a client stunnel process using TLS version 1.2
+				|_ Stunnel is a open-source multi-platform application used to provide a universal TLS/SSL tunneling service. Stunnel can be used to provie secure encrypted connections for clients or servers that do not speak TLS or SSL natively.
+			|_Storage classes
+				|_Standard
+					|_It charges on the amount of storage used each month.
+				|_Infrequent Access (IA)
+					|_It is cheaper than standard storage  but charges are applicable for read and write.
+			|_Lifecycle mgmt:
+				|_Files move from Standard to IA if not used for configured time and again to standard if it accessed again.
+			|_Performance modes:
+				|_General purpose
+				|_Max I/O
+			|_Throughtput modes:
+				|_Bursting throughput: with standard storage, default throughput is 100 MiB/s per TiB, so if the size reaches to 5 TiB then throughput would be 500 MiB/s
+				|_Provisioned throughput: It allows you to burst above your allocated allowance, which is based upon your file system size. So if your file system is relative small but the use case require a high througput rate, then the default bursting throughput options may not be able to process your request quick enough, so here you would need provisioned throughput, however this option does incur additional charges, and you'll pay additional cost for any bursting above default option of bursting throughput.
+			|_ To create EFS file system, you need to ensure that you have 'Allow' access the following actions:
+				elasticfilesystem:CreateFileSystem
+				elasticfilesystem:CreateMountTarget
+			|_ EC2 permissions are required to allow actions carried out by the CreateMountTarget action:
+				ec2:DescribeSubnet
+				ec2:CreateNetworkInterface
+				ec2:DescribeNetworkInterfaces
+			|_ "Resource":"arn:aws:elasticfilesystem:region-id:account-id :file-system/*"
+			|_ Used for networkd shared file systems using network-attached storage (NAS) devices.
+			|_ Files may be accessed concurrently from multiple different clients. can be accessed by thousands of instances at a time.
+			|_File storage is an abstraction on top of block storage using a file system like NFS or SMB.
+			
+				
 -Amazon CloudFront
 			|_Acts as a Content Delivery Network (CDN)
 			|_Distributions:
@@ -586,16 +678,27 @@ Imp points:
 
 Solution architect professional: notes
 Storage:
+S3:
+ |_ Storage classes:
+	|_ 
+
 EBS:
 1. Volume types:
 	- SSD: General purpose (gp2, gp3) -- balanced price and performance, use case - Virtual desktop, test or dev 		environment. Durability: 98.9% to 99.9%. 4GiB=16GiB, max IOPS: 1000 MiB/s.
 	- SSD: Provisioned IOPS SSD (io1,io2) -- high preformance and throughput workloads, use case - app need more than 16000 IOPS of 250 MiB/S of througput per volume. Large DB workloads (MongoDB, Cassandra, PostgreSQL, Oracle, etc), Supports EBS Multi-Attach.Durability: 99.999%. 4GiB=16GiB, max IOPS: 1000 MiB/s
 	- HDD (st1) - Throughput optimized. Low cost HDD volume designed for frequently accessed, throughput-intensive workloads. Use case - Streaming workloads requiring consistent, fast througput at a low price, Big Data, Data warehousing, Log processing. cannot be a boot volume.
 	- HDD - Cold HDD (sc1) - Lowest cost HDD volume designedfor less frequently accessed workloads. Use case - Throughput oriented storage for large volumes of data that is infrequentlya accessed, scenario where lowest storage cost is important. Cannot be a boot volume.
-
+	- Multi-attach enabled volumes do not support I/O fencing: I/O fencing protocol control write access in a shared storage environment to maintain data consistency. Your applications must provide right order between instances to maintain data consistency on a Multi-Attach enabled volume.
+	- Create your volume in the same availability zone as the instance you want to attach it to.
+	- AWS DLM (Data Lifecycle Manager): It automates the creation of EBS snapshot and uses schedule to achieve it. It relies on tags so it's imp to give proper tags to the volumes.	
 2. Security:
 	- AES-256 + AWS KMS
 	- KMS: CMK (Customer Master Keys) + DEK
+3. EBS Optimized Instance Type:
+	- Seperates I/O traffic from other network traffic
+	- Dedicated network capacity exclusively for I/O operations
+	- 90% of provisioned IOPS performance 99% of the time (gp2, gp3, st1, sc1)
+	- 90% of provisioned IOPS performance 99.9% of the time (io1, io2) 
 Notes:
 1. EBS volume can attach to an EC2 instance only in the same AZ
 2. Dynamic resizing is possible
@@ -604,7 +707,55 @@ Notes:
 5. Nitro system also allow the introduction of Bare Metal Instances - can run instances without hypervisor or custom    hypervisor
 6. Multi-Attach should be used with Linux instances as Windows doesn't recognize it as a shared volume. Also it support upto 16 Nitro linux instances to attach to the same volume.
 7. Multi-Attach is not recommended for XFS or EXT4 file system as it can lead to data loss as these file systems are not designed to be accessed by multiple instances at once. Instead use Clustered File system (like GFS2) which safely manages multi-instance access to the shared volume.
+8. EBS snapshots are placed in S3, so performance may get degraded while initializing a new volume from a snapshot until each block on the volume has been accessed at least once. Also, all blocks must be downloaded from S3 and written to the new volume.
 
+Amazon FSx:
+	|_ Types:
+		|_FSx for Windows File Server (fully managed)
+			|_Features:
+				|_User quotas
+				|_End-user file restore
+				|_Microsoft AD (Active Directory) integration for both authentication and authorization
+				|_ACLs and share-level access controls.
+			|_You have the ability to combine multiple FSx file system together using Microsoft's Distributed File System (DFS)
+			|_Throughtput can be from 32 MBps to 2-12 GBps.
+			|_FSx operates on a network I/O credit basis.
+			|_It will accrue credits when the throughput is lower than the baseline limits, and will lose credits when operating above the baseline.
+			|_It does deduplication. 
+		|_FSx for Lustre: 
+			|_Focus on high performance computing. So, use it when speed is super important. Suitable for machine learning, high performance computing, video processing.
+			|_POSIX-compliant system that's ideal for Linux-based applications.
+			|_It is able to scale its performance, providing up to 100 Gbps throughput, millions of IOPS, and sub millisecond latency.
+			|_It has integration with S3. So you can access the S3 contents from  multi-region FSx and interesting things is it keeps a reference of the file and when you access the file then it does lazy loading from S3. Any changes in FSx get reflects in S3. 
+		|_FSx for NetApp ONTAP
+			|_For Linux or Windows users of NetApp ONTAP.
+		|_FSx for OpenZFS
+		 |_It supports access from Linux/Mac/Windows using NFS protocol.
+		 |_It can deliver over one million IOPS, up to 21 gigabytes per second of throughput, and has microsecond latency.
+
+AWS Backup:
+	|_Centralized and automated way to implement data protection
+	|_You get to define backup policy from a central console or use AWS CLI or APIs
+	|_It supports service like EC2, EBS, EFS, RDS DB, Aurora cluster, Dynamo DB tables, VMWare workloads, S3 to take backup.
+	|_You can define backup schedules.
+	|_Assign application and service resources for backup
+	|_Define retention mgmt, lifecycle mgmt, and recovery
+	|_PCI Complaint, ISO Compliant, HIPAA Eligible.
+	|_Backup Rule: Specifies when and where to back up your data and what to do with it over time.
+	|_Backup plan: Association of one or more rules to which you can assign resources.
+	|_Vault: An AWS-managed encrypted storage location for all your backups
+	|_Vault Lock: Gives you the ability to meet compliance requirements for your data.
+	|_JOB: The action of creating a backup or restoring one following the backup plan.
+	
+AWS Storage Gateway:
+	|_This is solution to have hybrid storage solution where you have on-prem storage and cloud backup too.
+	|_It has 4 types: S3 File Gateway, FSx File Gateway, Volume Gateway, and Tape Gateway.
+	|_ Charges are based on how many TB/month are transfered out to the on-premises gateway. Pricing components are Storage, Requests, and Data transfer.
+	|_Storage Gateway installed in on-prem communicates with Storage Gateway Service which further connects to other AWS services.
+	|_Storage Gateway is also associated with local cache for faster retrival and its size can go up to 64 TB.
+	|_Volume gateway uses iSCSI (Internet Small Computer System Interface) protocol which shares the file blocks over IP.
+
+		
 Compute:
 EC2:
  - components: Amazon machine images (AMI), Instance Types, instance purchase options, tenancy, user data, storage options, security
@@ -1223,6 +1374,7 @@ KMS key components:
 
 
 AWS WAF (Web Application Firewall):
+- Protection against common web exploits.
 - It interacts with:
 	- AmazonAPIGateway
     - CloudFront distribution
@@ -1236,6 +1388,10 @@ AWS WAF (Web Application Firewall):
 - to mention a single IP address in CIDR format: 172.6.7.8/32
 - Rate-based rules count the number of requests over a 5 min period - so this will trigger the rule if number of requests exceeds the mentioned amount in the rule in 5 mins period.
 - Rules are executed in the order they are listed
+
+AWS Shield:
+- Protection against DDos attack
+- No-cost standard offering and $3000 per month advanced offering.
 
 AWS Firewall Manager:
 - This is to secure more than one AWS account and this is to simplify the security configuration across the organization
@@ -1251,15 +1407,15 @@ AWS Network Firewall:
 	- Filter internet traffic
 - Features:
 	- High availibility (updated >= 99.99%) and automated scaling
-	- Stateful Firewall - seesion communication is saved
+	- Stateful Firewall - session communication is saved
 	- Web filtering
-		- If using encryption, the server nmae indication (SNI) is used for specific sites
+		- If using encryption, the server name indication (SNI) is used for specific sites
 		- SNI typically used with AWS WAF
 	- IPS/Intrusion
 		- Allows inspection of real-time network traffic at the application layer
 		- Protects against vulnerability exploits and brute force attacks.
 	- Central management and visibility
-		- Manages security policies of all your apps, VPCs, or AWS orgnization via a signle or centralized deployment environment.
+		- Manages security policies of all your apps, VPCs, or AWS organization via a single or centralized deployment environment.
 		- Allows grouping of rules, aggregating views of policy compliance, and bringing new accounts, resources, and network components into compliance immediately.
     - Alert and Flow logs
 		- Alert logs provide data on specific rules which are triggered 
@@ -1367,11 +1523,352 @@ AWS CloudTrail:
 	
 	
 Governance and Monitoring:
+CloudWatch:
+	Components:
+		- CloudWatch Dashboards
+		- Cloudwatch Metrics and Anamoly Detection
+		- CloudWatch Alarms
+		- CloudWatch EventBridge
+		- CloudWatch Logs - real-time monitoring of log data.
+		- CloudWatch Insights
+	|_ The resources within your customized dashboard can be from multiple different regions
+	|_ You can share the dashboard with different users even if they are not part of the AWS account.
+	|_ Custom metrics are regional
+	|_ Amazon Cloudwatch alarm tightly integrate with metrics and allow you to implement automatic actions based on specific thresholds that you can configure relating to each metrics
+	|_ states: OK, ALARM, INSUFFICIENT_DATA
+	
+	EventBridge:
+	|_ It allows you to implement event driven architecture.
+	|_ Consist of:
+		- Rules : to filter and route the events and it can even route to multiple targets.
+		- Targets : e.g. AWS Lambda, SQS, Kinesis 
+		- Event buses: It receives event from your applications and your rules are associated with a specifi event bus. EventBridge uses a default event bus that is used to receive events from AWS services.
+	Unified CloudWatch Agent:
+	|_ It can collect logs and additional metric data from EC2 instances as well from on-premise services running either a Linux or Windows OS
+	CloudWatch Insights:
+	|_ types
+		- Log insights 
+			|_ allows you to query on the logs and having visualization feature to plot it  in graphs, bar, etc.
+		- Lambda insights
+			|_ It gathers and aggregates system and diagnostic metrics related to AWS Lamda to help you monitor and troubleshoot your serverless applications.
+			|_ you need to enable the feature per Lambda function
+		- Container insights 
+			|_ gets data from EKS and ECS. It gives a diagnostic data to resolve issues that arise in container architecture. 
+			|_ The monitoring and insight data can be analyzed at the cluster, node, pod and task level making it a valuable tool to help you understand your container applications and services.
+	Metric Filters:
+	|_You can create filter pattern which extract a specific string or term matching the pattern from the logs and we can also set threshold for the count of that term match.
+	Contributor Insights
+	|_Contributor insights visualize who your top contributors are, using time-series data extracted from your cloudTrail logs
+CloudTrail:
+ |_ Events:
+	- Management Events:
+		|_ Also known as Control Plane Operations, these track information about mgmt operations taken against AWS resources within your account, e.g. Amazon RDS CreateDBInstance API, AWS IAM CreateUser API
+		|_ Some captured events are non-API events too, e.g. When an automatic key rotation of a KMS key is performed, when a user has a successful or unsuccessful sign-in to the AWS mgmt console.
+    - Data Events:
+		|_ Also knows as Data Plane Operations, these show information about resource operations performed on or in a resource, e.g. Amazon S3 object-level API activity, including GetObject, DeleteObject, PutObject.
+		|_ AWS EBS Snapshot Operatiosn, such as: PutSnapshotBlock, GetSnapshotBlock, ListchangedBlocks
+	- CloudTrail Insight events:
+		|_ These are used to capture unusual activity within your account, 
+		|_ Stored different folder in S3 to the mgmt and Data events and contain info about: Time of the event, Error codes, Associated APIs, Additional statistics.
+	- types:
+		|_ All region Trail
+		|_ Single region Trail
+		|_ AWS organization Trail:
+			- It can capture from single or all regions.
+			- Mgmt account must be used to create the trail, which will be associated and applied to all of your member accounts.
+	- Events are typically kept in an Event data store, keeping them up to 7 years.
+	- Using SQL query language we can query event from the data store and take necessary action on it.
+	- Consolidating data from multiple sources and regions allows your team to view API activity through a "single-pane-of-glass" approach.
+	- CloudTrail insights events are stored in a folder named /CloudTrail-Insight
+	- The data from CloudTrail logs helps you maintain governance and meet regulatory requirements. Events captures info such as principal, arn, source IP, event time, event name(API), account id, region, etc.
+	- AWS managed policies for CloudTrail are CloudTrailServiceRolePolicy (only for service and not for users or groups), AWSCloudTrailFullAccess, AWSCloudTrail_ReadOnlyAccess
+	- CloudTrail Trails :
+		|_ It enable you to capture, track, and retain events across your AWS accounts.
+		|_ Without Trails, events can only be viewed within the Event history of the cloudTrail dashboard in the AWS Management Console.
+	- clouTrail Lake 
+		|_ It allow you to store, review, and query events within your AWS account that have been generated by your resouces.
+		|_ It accumulates them into event data store, keeping them for up to 7 years.
+	-  Event categories : Management, Data, Insight
+	- File in S3 looks like : AccountID_CloudTrail_RegionName_YYYYMMDDTHHmmZ_UniqueString.FileNameFormat. S3 folder structure: Bucket_name/prefix_name/AWSLogs/Account ID/CloudTrail/region/YYYY/MM/DD
+	- You need to update the bucket policy on your destination bucket to allow other accounts to write CloudTrail logs to it.
 
+
+
+AWS Config:
+ |_ This is a very interesting service which defines rules for say detecting ENIs which are not attached to any EC2 instances or EBS volumes which are not attached to any EC2, to save the unnecessary infra cost.
+ |_ This is mainly to manage large fleet of resources and have a consistent behavior accross.
+ |_ Provides an inventory that includes all configuration details including the history of how a resource was configured at any point in time.
+ |_ It provides remediation when the current state deviates from the desired state. This can be done in various ways:
+	|_ Manually
+	|_ Leverage a Lambda function
+	|_ Use Systems manager automation
+ |_ It's by default disabled.
+ |_  AWS Config recorder:
+	|_ It needs to be enabled first, it then examines the resources in the region for their configuration.
+ |_ It creates configuration item per resource and saves it in S3. It consist of Metadata, Attributes (resource id, creation time, ARN of resource and key-value tags, resource availability zone), Relationships (resource relationship with other account resources), Current Configuration (info provided by a call to the describe or list resource API)
+ |_ Configuration History enabled when you setup the AWS config recorder. Delivered to S3 bucket in every 6 hours.
+ |_ Configuration Snapshot must be manually enabled using the AWS CLI using API PutDeliveryChannel or DeliverConfigSnapshot. Defined on demand using deliver-config-snapshot command or at a predefined frequency of 1,3,6,12 or 24h
+ |_ An aggregator gathers configuration and compliance data from multiple AWS accounts and regions.
+ |_ AWS Config rule - These rules are defined to set desired state
+ |_ Existing AWS managed rules cover over 55 AWS services
+ |_ In addition to the variety of AWS managed rules, you can create your own custom rules
+ |_ We have AWS Config Rule RDK (Rule Development Kit) to create a custom rule.
+ |_ RDK generates a custom AWS Lambda function in the background and test it with compliant CIs (Configuration Item) and non-compliant CIs from existing directories and checks if it returns the corresponding result.
+ |_ If a managed rule includes parameters, you must configure the value for which your resources will be evaluated as needed.
+ |_ Rule tag mechanisms are essential to grouping resources based on your business needs.
+ |_ CloudFormation Guard Rules:
+	|_ It validates CloudFormation template, CloudFormation Change Sets, Terraform template, K8s configurations.
+	|_ It creates a custom rule. It's a policy-as-code evaluation tool that is open-source and uses a Domain Specific Language (DSL)
+	|_ You can define policy as code after installing the custom Guard CLI.
+	|_ It also includes a unit testing framework to verify the rules work as expected.
+	|_ It uses "clauses" which is a boolean expression that evaluates to True or False i.e. Pass or Fail.
+	|_ Version 2.1 provides the option of viewing a color-coded output that highlights code snippets.
+	|_ Write rules that use parameters to create rules that work across CloudFormation templates, Terraform plans, and AWS Config instead of using separate templates for each.
+	|_ A resource is considered as compliant if all the rules associated with it passes and vice versa.
+	|_ We may receive INSUFFICIENT_DATA in case rule evaluation is not yet envoked or rule's Lambda function is failing to send evalution results to AWS Config or the resources have been deleted.
+ |_ A Conformance Pack is a group of AWS Config rules and remediation actions that can be deployed as a single logical unit. This can be for an account, a region or even across an entire organization. It provides a general-purpose compliance framework to help you create your own conformance packs with your required rules, input parameters and remediation actions. The templates are a useful reference starting point for dozens of security and operational best practices.
+ 
+Organization Units (OU):  
+    |_ Within AWS Organization we create Organization Unit to have a logical grouping of AWS accounts 
+	|_ Used to group accounts within an organization into logical groups
+	|_ Allows you to deploy policies which will only affect accounts in selected units.
+	|_ We can have a master account to centrally manage multiple Accounts from a single AWS account. Master account can have both OU and individual account under it.
+	|_ Adminitrators of the master account gain powerful control over which services and features - even down to specific API calls - that an IAM users within those accounts can use.
+	|_ It supports consolidated billing of all accounts.
+	|_ AWS account doesn't cost anything and if they under the same OU then they can be centrally managed
+	|_ You can have separate OUs for Security, Infrastructure, Sandbox and workloads. Other not so famous OUs - Policy Stating, Suspended, Exceptions, Individual Users (for external users or contractors) and Deployment
+	|_ SCP (Service control policy)
+		|_ They are JSON policies and allow you to configure what services or features are available in the AWS accounts.
+		|_ SCP does NOT grant access, they add a guardrail to define what is allowed. You still need to configure your identity-based or resource-based policies to identities granting permission to carry out actions within your accounts.
+		|_ You need to enable them from root account of your organization. 
+		|_ If you disable SCPs in your organization all SCPs are deleted and removed. Re-enabling SCPs again will revert to the default SCP allowing FullAWSAccess.
+	|_ Cross account access:
+		|_ when combined with an SSO solution, easily move across accounts using the same set of credentials.
+	|_ Additional tools to consider:
+		|_ Control Tower
+			|_  AWS Control Tower uses Organizational Units (OUs) within AWS Organizations to help you organize, manage, and govern your multi-account AWS environment effectively. It automates the setup of a secure environment and applies policies and guardrails to ensure compliance and best practices across your AWS accounts.
+			|_ Basically OUs is being used for logical grouping of AWS accounts based on similarities, whereas control tower is being used for provisioning multi-account setup and it uses blueprint with default configuration for security, logging, and cross-account access. 
+			|_ It generates some predefined OUs viz "Core" for shared services, "Sandbox" for development and experimentation, and "Custom" for other specific use cases.
+			|_ It uses guardrails to ensure having only compliant resources. Guardrails has two types viz. Preventive Guardrail  which prevents non-complaint resources being created and enforce it through SCPs applied to the OUs, and Detective Guaurails which detects in the existing resources and send alerts and they use AWS Config rule to continously monitor your resources.
+			|_ We have AWS Control Tower controls as well which act similar to control Gaurdrails. It has types: preventive control (Similar to Guardrail), detective control (Similar to Guardrail) and proactive control which are designed to help you maintain compliance by providing recommendations or taking actions before a non-compliant resource is created
+			|_ Control tower uses CloudFormation Guard policies implemented by hooks behind the scenes for these controls.
+			|_ Ensure that you're applying consistent controls and governance across all your accounts in AWS 
+		|_ IAM Identity Center
+			|_ AWS IAM Identity Center, previously known as AWS Single Sign-On (SSO), is a service that makes it easy to centrally manage access to multiple AWS accounts and business applications. It allows you to create or connect your workforce identities and grant them access to various AWS resources and applications in a centralized and secure manner.
+			|_ Define access policies that apply across all accounts in your organization.
+			|_ Seamlessly integrate with AWS Organizations to manage access across multiple AWS accounts.
+			|_ Create and manage user identities directly in IAM Identity Center
+			|_ Alternatively, connect to an existing identity source such as Microsoft Active Directory or an external Identity Provider (IdP) that supports SAML 2.0 or OpenID Connect.
+			|_ Supports various MFA methods, including virtual MFA devices, hardware MFA devices, and SMS-based MFA.
+			|_ Integrate with AWS CloudTrail to monitor changes and access patterns. 
+		|_ Landing Zone Accelerator
+			|_ A "Landing Zone" in the context of AWS refers to a pre-configured, secure, scalable, multi-account environment based on AWS best practices. The term "Landing Zone Operator" isn't a specific AWS service or role but can be interpreted as a responsible entity or person managing and maintaining this environment.
+			|_ The Landing Zone Operator uses the Account Factory in AWS Control Tower to create a new AWS account for a new project. This account is placed in a specific OU that has the appropriate guardrails and policies applied.
+			|_ A Landing Zone Operator can be seen as the person or team responsible for the deployment, management, and oversight of an AWS landing zone. They ensure that the multi-account environment adheres to security, compliance, and operational best practices through the use of OUs, guardrails, and automated account management tools.
+			|_ Landing Zone Accelerator (LZA) allows you to manage your entire landing zone as IaC (Infrastructure as Code)
+		
+Resource Access Manager:
+	|_ It allows you to securely share resources across your AWS organization or with any AWS account.
+	|_ This helps to minimize administration between your accounts as it negates the need to duplicate resrouces in each of your accounts
+	|_ It supports sharing of Subnets, Transit Gateway, Resolver Rules, Capacity Reservations, License Configuations, Aurora DB Clusters, Traffic Mirro Targets. 
+    	
+AWS License Manager:
+	|_ It's used for Assessing, Tracking, Monitoring and Managing licenses.
+	|_ Monitor your license requirements across multiple AWS accounts plus on-premises environments.
+	|_ Monitor your licenses for software vendors.
+	|_ With AWS marketplace, you can integrate BYOL to AWS License Manager.
+	
+
+AWS Service Catalog:
+	|_ You can create your own portfolio of product and associate service action against it. Also you can define multiple types of constraints (Launch, Notification, template, tag update, stack set). The primary goal of AWS Service Catalog is to help organizations standardize and centrally manage commonly deployed IT services.
+	|_ Launch Constraints: A launch constraint specifies that only a predefined IAM role with the necessary permissions can be used to launch the EC2 instance product.
+	|_ Template Constraints:A template constraint restricts the instance types to "t2.micro" and "t2.small" to control costs and ensure instances are within the organization’s approved configurations.
+	|_ Tag Update Constraints: Tag update constraints prevent changes to tags like "Department" or "Project" to ensure that cost tracking remains accurate and consistent.
+	|_ Notification Constraints: A notification constraint sends an alert to an SNS topic whenever an EC2 instance is launched, allowing the operations team to review and monitor the deployment.
+
+AWS System Manager:
+	|_ As the name suggest you can manage your system e.g. windows/linux installation, pathes, etc., that so for on-prem as well as in other cloud system too. All these can be controlled from one place and no need to ssh to each individual system. So this all in one kind of solution for managing the systems. It allows automation of tasks, schedule maintenance windows, create and update system images, collect software inventory, apply system or application patches, manages the state of the instances. 
+	|_ Most of system manager functionality is free.
+	|_ Maintains complete visibility and control over your entire machine farm independent of operating system, location and number of instances.
+	|_ It provides you System Manager explorer which is a customizable operational dashboard to display operational data and work items for all your accounts and across regions.
+	|_ You can now have a set of fully-managed AWS services that help you enable provisioning and operating of your resources at scale.
+	|_ It enables you to create resource groups which help in managing the similar resouces and tagging.
+	|_ SSM agent : It needs to be installed in all the instances to be managed by System Manager.
+	|_ You can use session manager to start a session of any of the managed instances
+	
+AWS Trusted Advisor:
+	|_ The main function of it is to recommend improvements across your AWS account to help optimize and streamline your environment based on these AWS best practices.
+	|_ Cost optimization : Helps to identify ways to optimize resources and reduce costs, by implementing features such as reserved capacity and removing unused capacity. 
+	|_ Performance: Reviews and suggest if we can get benefit from performance enhancing capabilities such as provisioned throughput.
+	|_ Security: Analyze for any potention security weakness or vulnerabilities.
+	|_ Fault tolerance: Suggests best practices to maintain service operations by increase resiliency, should a fault or incident occur across your resources
+	|_ Service limit: This identifies and warns you when your resources reach 80% capacity of their service limit quota.
+	|_ It has a list of control points and checks to see how your account, resources and architecture is implemented to determine if you're alinged with best practice.
+	
+Logging:
+CloudWatch:
+	|_ Unified CloudWatch Agent:
+		|_ It allows the collection of logs from EC2 instances as well from on-premise servers.
+		|_ Create a role and attach it to the instance with permissoins to collect data from the instances in addition to interacting with SSM
+		|_ Install CloudWatch agent using SSM. Use SSM's run command feature to run the command for installing CloudWatch agent.
+		|_ Configure the agent using command : sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-config-wizard
+		|_ Start the CloudWatch agent
+		|_ It needs two roles, one is to install the agent and also to send the additional metrics gathered to CloudWatch and other one is to communicate with the parameter store within SSM, to store a configuration information file of the Agent.
+		
+S3 Access logs:
+ |_ By default it's not enabled
+ |_ Here comes two things, source bucket whose access needs to be logged and the destination bucket.
+ |_ To allow S3 to save access logs in target bucket it needs permission to get write access for the 'Log Delivery' Group
+
+CloudFront Access log:
+ |_	format --> bucket-name:s3.amazonaws.com/optional-prefix/distribution-ID.YYYY-MM-DD-HH.unique-ID.gz
+ |_ If there are multiple edge locations for a distribution then a single combined log file is generated.
+ |_ To enable logging of your distribution, the user must have access like : FULL_CONTROL, s3:GetBucketAcl, s3:PutBucketAcl
+ |_ You can also enable Cookie logging if the origin is not S3 for the distribution.
+ 
+
+VPC Flow Logs:
+ |_ Within you VPC you cloud potentially have hundreds or even thousands of resources all communicating together.
+ |_ Uses:
+	|_ Capture IP traffic information that flows within your VPC
+	|_ Resolve incident with network communication and traffic flow.
+	|_ Help spot traffic reaching a destination that should be prohibited.
+ |_ The log data generated by VPC Flow logs is sent to CloudWatch Logs and as per recent update it can now be directly delivered to S3.
+ |_ Limitations:
+	|_ For VPC peered connections, you can only see flow logs of peered VPCs within the same account. 
+	|_ You are not eable to retrive information from resources whithin the EC2-Classic environment.
+	|_ ONce a VPC Flow Log has been created it can't be changed.
+ |_ You can setup and create Flow Log against these resource:
+	|_ A network interface on one of your instances
+	|_ A subnet within your VPC - Data is captured for all network interfaces
+	|_ Your VPC itself - Data is captured for all network interfaces
+ |_ Publishing data to CloudWatch:
+	|_ Every network interface that published data to the CloudWatch Log Group uses a different log stream.
+	|_ Within each stream there is the flow log event data that shows the content of the log entries.
+	|_ Each of these logs captures data during a windows of approx 10-15 mins
+ |_ permission required to create, delete or describe flow logs: e.g. ec2:CreateFlowLogs, ec2:DeleteFlowLogs, ec2:DescribeFlowLogs. Permission logs:GetLogsDat is used to list log events from a data stream.
+ 
+
+AWS Cloud Config logging:
+ |_ Configuration Item (CI) = Configuation Information + Relationship Information + Other metadata
+ |_ The configuration history uses Configuration Items (CIs) to collate and produce a history of changes to a particular resource.
+ |_ It sends a configuration history file for each resource type to a S3 bucket
+ |_ Configuration history files are delivered every 6 hours. It contains all CI changes for all resources of a particular type.
+ 
+ 
+Amazon Athena:
+ |_ You can use Amazon Athena to query data within S3 to search for specific entries.
+ |_ It allows you to run SQL queries on S3
+ 
+ 
+Eventbridge:
+	|_ It's follows an event driven architecture. So can take action on events.
+	|_ AWS Health Dashboard sends event to EventBridge.
+ 
+ 
+AWS Glue:
+	|_ AWS Glue is a fully managed extract, transform, and load (ETL) service provided by Amazon Web Services (AWS). It is designed to simplify and automate the process of preparing data for analytics, machine learning, and application development. AWS Glue makes it easy to move data between different data stores and transform it into a usable format
+	|_ Key Features:
+		|_ GLue data catalog
+			|_ Centralized Metadata Repository: The Glue Data Catalog is a central repository for storing metadata about data sources, such as table definitions, schemas, and data location.
+			|_ Schema Discovery: Glue can automatically discover and catalog schema definitions from various data sources, making it easier to manage and query your data.
+			|_Versioning: The Data Catalog supports versioning of schemas, helping to track changes and manage schema evolution.
+			|_ It uses Crawlers which further uses build-in/custom classifier to fetch the data from different datasource and make catalog table representations in database (its own), note data is still there in datasource but it gives a table and schema representation of those data and ultimately fetches the data from datasource. Code need not to know where the data stores and it can refer the data catalog to fetch the data.
+		|_ Glue Studio
+			|_ Glue Studio offers a visual interface for creating, running, and monitoring ETL jobs, making it easier for users without deep coding expertise to build data pipelines.
+			|_ ETL jobs consist of Datasource, Scripts (transformation) and target. Using studio we can use drag and drop to pick each of the items. 
+			|_ This provides around 10 build-in transformation logics but give option to have custom programmatic logic. 
+			|_ It's mainly targetted for ETL use cases.
+		|_ DataBrew
+			|_ A no-code visual data preparation tool that helps users clean, normalize, and transform data through a user-friendly interface and pre-built transformations.
+			|_ It does, upload data, transform ( formatting, remove duplicate, encoding) and upload transformmed data into S3 (only option here).
+			|_ It's mainly targetted for ML use cases.
+			|_ It provides 250+ build-in transformation options. But no option to have custom code which is there in studio.
+		|_ Glue ElasticViews
+			|_ A managed service for creating and managing materialized views that aggregate and join data from multiple sources, ensuring they stay up-to-date in near real-time.
+
+EMR vs. Glue	
+ |_ If you need flexibility with how you manage the engine or the underlying infrastructure,EMR on EC2 is best for you. Otherwise, if you need to run short-lived jobs that will run in an Apache Spark environment, Glue or EMR Serverless will save you time by managing the infrastructure for you.
+ 
+ETL orchestration services:
+	|_ AWS Data pipelines
+		|_ It only supports EMR
+	|_ AWS Step functions
+		|_ It supports both EMR and Glue
+		|_ It supports integration with around 200 services like Amazon Athena.
+		|_ It coordinates the navigation among services in a serverless workflow and manages retries and errors. 
+		|_ It's more robust than DataPipeline in terms of configuration, providing the ability to not only perform tasks but also embed simple logic for execution in your pipeline. This enables you to make choices between multiple states, pass data between services, use parallel execution, and implement delays in your pipeline. 
+	|_ AWS Glue - Glue Workflows
+		|_  Provices visual editor to draw relationship between your components such as triggers, crawlers, and your Glue ETL jobs.
+		|_ only issue is it can only work with Glue components.
+		|_ IT's free, but need to pay for the underline components.
+		
+CloudFormation:
+ |_ It's a IaC (Infrastructure as Code) service.
+ |_ It doesn't support all the AWS services.
+ 
+
+Service Level Agreement (SLAs):
+ |_ AWS commits uptime for services and if it doesn't meet that uptime then it provides service credit which is only applicable for that particular service and account.
+
+Observability:
+	|_ Metrics:
+		|_ Numerical data from a specific time period e.g. Information about CPU utilization, System error rate.
+	|_ Logs:
+		|_ Provide info about resources and requests
+		|_ counters can be created for frequency of events
+	|_ Traces:
+		|_ Record paths taken by requests made by app or user
+	    |_ Helps you see how backend systems interact to fulfill user requests.
+	|_ CloudWatch: Logs and Metrics
+	|_ AWS X-Ray: Traces
+	|_ Amazon CloudWatch ServiceLens:
+		|_ Uses X-Ray to provide end-to-end view of applications
+		|_ Combines with CloudWatch metrics and logs: Metrics, traces, and logs are all in one place.
+		|_ Provides an end-to-end view of your application
+		|_ Bottlenecks and impacted users can be seen and identified, as well as metrics and log data.
+    |_ Services like Amazon CloudWatch Synthetics and CloudWatch RUM were created to better monitor and test the end-user experience.
+	|_ Amazon CloudWatch Synthetics: Uses canaries to perform the same actions as your users and monitor for issues, including dead links, transaction issues, and latency issues.
+	|_ CloudWatch RUM: Client-side data for your applications can be viewed to gain insight into user sessions.
+	|_ CloudWatch provides out-of-the-box metric functionality for AWS services like EC2, ECS, Lambda, RDS, and DynamoDB.  Also it enables you to have custom metrics to get additional info from your app.
+	|_ With CloudWatch Lambda Insights you can track lambda-specific metrics like cold starts and Lambda worker shutdowns.
+	|_ Log insights: uses its own query language so you can display, filter, sort, and limit your log data.
+	
+	
+OpenTelemetry:
+	|_ Instrument the applications just once
+	|_ Collect metrics and traces all in the ame standardized format
+	|_ Send the data to the chosen moinitoring platforms
+
+
+Serverless architecture:
+	|_Time and effort saved not provisioning and maintaining infrastructure
+	|_Never pay for idle or unused resources
+	|_If solution needs long running processes or constant high demand of request, then serverless is not an option.
+	|_ API gateway: AWS will manage your endpoint with no load balancers or front-end servers to provision.
+	|_Lambda: It allows you to upload your code without provisioning back-end servers.
+	|_Event driven architecture:  Services are triggered by events that occur within the infrastructure.
+	|_Each services within a decoupled environment communicates with others using specific interfaces which remin constant throughout its development.
+	|_Event: change of state.
+	|_Event router processes the event and takes the necessary action in pushing the outcome to the consumers e.g. Amazon SNS, Amazon Kinesis and AWS Lambda.
+	|_Amazon SQS (Simple Queue Service) - commonly used in decoupled architecture.
+	
+	
 
 Questions:
 1. cloud watch vs cloud trail
-2. can multiple VPCs use the same VPC endpoint?a
+2. can multiple VPCs use the same VPC endpoint?
+
+
+---OReilly SAP-C02 Crash course notes--
+--> VPC Network support upto 5 additional CIDR ranges
+--> You can attach secondary ENIs to the EC2 instances
+--> ENIs DO NOT allow secondary IPs to be added
+--> IAM Identity center -- AWS's internal federation service
+--> Log file validation delivers a digest file into S3 which can be analyzed to determine if any objects have been modified or deleted.
+--> 
+
+
 
 Definitions:
 Docker: Is a piece of software that allows you to automate the installation and distribution of applications inside Linux Containers.
@@ -1391,8 +1888,8 @@ The seven layers of networking refer to the OSI (Open Systems Interconnection) m
 	
 	
 
-
-
+links:
+https://www.awsyarn.com/how-to-pass-aws-sa-professional-sap-c02-certification/
 
 	
 	
