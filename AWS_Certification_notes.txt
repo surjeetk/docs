@@ -1,8 +1,9 @@
--------------AWS Notes---------------nes (AZs) , Region (list of AZs), Edge Locations ( internally being used by AWS services e.g. for caching)
+-------------AWS Notes---------------
+--> Availability zones (AZs) , Region (list of AZs), Edge Locations ( internally being used by AWS services e.g. for caching)
 --> VPCs (Virtual private cloud) are linked with region
 --> Only 5 VPCs are allowed per region per AWS account
---> CIDR (Classless Inter-Domain Routing) - 
---> AWS Global infrastructure -- Avalibility Zohttps://s3.amazonaws.com/tr-learncanvas/docs/IP_Filtering_in_Canvas.pdf
+--> CIDR (Classless Inter-Domain Routing) - https://s3.amazonaws.com/tr-learncanvas/docs/IP_Filtering_in_Canvas.pdf
+--> AWS Global infrastructure 
 --> Each subnet exist in a single AZ
 --> Subnet by default is private and to make it public, create Internet Gateway and link with the subnet and make entry in route table associated with the subnet.
 --> can use same route table for multiple subnets, but vice versa is not true
@@ -150,13 +151,52 @@ Maria Db, PostgreSQL, MYSQL, SQL Server, ORACLE:
 	-- General purpose SSD storge -- min storage (20GiB) and Max 64TiB(SQL Server 16TiB)
 	-- Provisional IOPS(SSD) storage -- good for workloads that operate at a very high I/O -- IOPS: Min 8000, Max 80,000 (SQL Server 40,000)--Min 100Gib and Max 64Tib(SQL Server 16TiB)
 	-- Magnetic Storage -- supported to provide backward compatibility -- aws recommends to use general purpose
+	
 Amazon Aurora
 --> uses Shared Cluster Storage
-	
+--> It's a managed DB for MYSQL and PostgreSQL, which is 5 times faster than standard Mysql and 3 times faster than standard PostgreSQL.
+--> Provides replication across multiple Availability Zones (AZs) with automated failover, and continuously backs up data to Amazon S3.
+--> Allows for globally distributed applications with low latency by replicating your database across multiple AWS Regions.
+--> It can handle up to 4 copies lost for writes
+--> Unlike RDS, Aurora does not need replication since it uses and shares a single logical volume amongst all compute instances.
+--> Aurora uses a quorum and gossip protocol baked within the storage layer to ensure that the data remains consistent.
+--> Together the quorum and gossip protocol provide a continous self healing mechanism for the data.
+--> Aurora in general, and regardless of the compute layer (which internally uses EC2) setup - always provides 6 way replicated storage across 3 availability zones. 
+--> It's only supported in regions which has 3 or more availability zones.
+--> It provides both automatic and manual failover of the master either of which takes approx 30 secs to complete.
+--> Daily backups are automatically performed with a default retention period of 1 day and for which can be adjusted up to max retention periof of 35 days. But manual snapshot can be performed on the database at any time. Also, manual snapshots are stored indefinitely until you explicitly choose to delete them. 
+--> Max of 4 compute instances can be configured as master in multi-master setup. 
+--> you cannot add read replicas in multi-master setup.
+--> Incoming DB connections to an Aurora multi-master cluster are not load balanced by the service, but the logic must be implemented and performed within the client. 
+--> If an instance outage occurs in multi-master setup in one of the AZ, all database writes can be redirected to the remaining active instances - all without the need to perform a failover.
+--> Amazon Aurora Serverless: Underline compute instances does automatic scaling. no provisioning, cost-effective, instant capacity changes, compatibility, high availability. If there is no load then compute instances automatically goes down. The service is underpinned by the same fault tolerant self healing storage layer. There is no option and no need to add read replicas.
 	
 AWS Dynamo-DB:
  |_Provosioned - when you have forcasted workloads	-- it may give provisionedThroughputOuputExceeded
  |_On-Demand - not that cost effective
+ |_ NoSQL schemaless managed service
+ |_ Built and provided by AWS
+ |_ Designed internally to automatically partition data and incoming traffic across multiple partitions.
+ |_ Partitions are stored on numerous backend servers distributed across three availability zones within a single region
+ |_ It takes care of both partition mgmt and replication
+ |_ The synchronous AZ replication provides protection against any single node outage and/or a full availability zone outage.
+ |_ It uses low latency interconnects between the AZs for high speed sub second replication
+ |_ Dailling up and down the provisioned throughtput of a DynamicDB database is possible, and ensures that your DynamoDB database can meet the need of your application as it grows.
+ |_ DynamoDB provides a secondary layer of availability in the form of cross region replication (Global Tables)
+ |_ Global Tables gives you the capability to replicate a single table across 1 or more alternate regions.
+ |_ Global tables elevates the availability of your data and enables applications to take advantage of data locality.
+ |_ User can be served data directly from the closest geographically located table replica.
+ |_ Global Tables implement multi master read/write capability with eventual consistency.
+ |_ Both read and writes can be performed against any one of the configured global tables.
+ |_ All writes will then be replicated in near sub second to time to all other globally configured tables of the same table name.
+ |_ Existing DynamoDB tables can be converted into global tables either by using the relevant configuration options exposed within the AWS DynamoDB console - or by using the AWS cli and executing this command:
+ aws dynamodb update-table
+ |_ command to load the data from json file into table:
+ aws dynamodb batch-write-item --region us-west-2 --request-items file://<path>
+ |_ It allows on demand backup and this can also be scheduled, and it remains in the account until they are explicitly requested to be deleted by an administrator.
+ |_ Backups typically finish within seconds, and have zero impact on the table performance and availability.
+ 
+ 
  
  
 It has wokflow limitations -- max record size 400KB, max indexes per table : 20 global, 5 secondary
@@ -290,6 +330,10 @@ KeyConditionExpression=Key("product_id").eq(12345) & Key("status").eq("unshipped
 -No. of partitions = max(table size/10GB, (Read Capacity Units/3000 + Write Capacity Units/1000))
 
 
+RDS Proxy:
+	|_It is fully managed, serverless, highly available DB proxy for Amazon RDS.
+	|_It sits between RDS DB and Application.
+	|_It maintains DB connection pools and that is how it saves time in reinitiating connection each time. 
 
 -------------------
 Storage:
@@ -307,6 +351,7 @@ On-premise storage:
 	|_Best fit for write once and read multiple times
 	|_Every file act as an object
 	|_Unlimited storage capacity
+	|_Its has native integrations with AWS Lambda
 	|_Highly scable, durable, cost effective, available, durable
 	|_Largest file size supported - 5 TB
 	|_Numerous copy of same data in different AZs
@@ -503,19 +548,70 @@ On-premise storage:
 	|_ARN from alias can be configured such as your event source mappings
 	|_Poll-based event sources: Kinesis, DynamoDb, SQS 
 	|_Invocation type of Poll-bases events are always synchronous
+	|_It has limitations like 15 mins timeout, and 10GB of storage.
+	|_If using zip to upload the code the limit is 50 MB and for container images the limit is 10 GB. For containerized workloads it is suggested to use AWS Fargate (ECS tasks also uses fargate) which is suitable for long-running, containerized applications or microservices that require more control over the underlying infrastructure or have specific resource requirements. Also, provides more flexibility in terms of container configuration, networking, and resource allocation compared to Lambda. You have control over the container runtime, environment variables, and container placement strategies.
+	|_Lambda: Automatically scales based on incoming requests. Limited control over resources. ECS (Fargate): Specify CPU and memory resources for each container. More control over container resources.
 	
 SQS (Simple Queue Service):
+- It's a message queue system.
+- It can help you decouple your application by providing a system for sending, storing, and receiving messages BETWEEN multiple software components.
+- SQS is a managed service that offers two types of queues: FIFO and Standard.
 -When message is retrieved by consumer, visibility timeout is started with default value 30 secs and as long as 12 hrs
+-Visibility timeout can be set for an individual message using the ChangeMessageVisibility call with a VisibilityTimeout  parameter in seconds.
+-Note: If your consumer needs longer than 12 hours to process a message, consider using Step Function.
 -If message is not marked as delete then it will be available again in the queue as new message for other consumers to consume
 -SQL queue is distributed across multiple servers for resiliency
 -Type of Queue:
 	-Standard Queue -support atleast once delivery of messages. Order is not guaranteed. Highly scable. Unlimited no. of transactions per second.
 	-FIFO queue - order is maintained and no duplication(exactly once delivery). limited no. of transactions per second.
+	can have max 20,000 messages while processing. 
 	-Dead Letter Queue - send messages that fail to be processed.
+-Polling types:
+	- Short polling: 
+		- Consumer send ReceiveMessage request and SQS respond even if no message is available.
+		- This happens when WaitTimeSeconds/RequestMessageWaitTimeSeconds in the request is set to 0.
+	- Long polling:
+		- Consumer send ReceiveMessage request with WaitTimeSeconds greater than zero but less than or equal to 20 secs.
+		- In this case, SQS sends a response after it collects at least one message available and up to the maximum number of messages specified in the request by the MaxNumberOfMessages parameter.
+		- Empty response only happends when wait time expires.
+- There can be a max of 120,000 in flight messages in a standard queue. These messages are received by the consumer but not yet deleted from the Queue.
+- Overlimit errors occur when an API request rate exceeds the allowed request rate for an AWS service. For SQS, this happens when the number of requests made to the queue exceeds the rate limits set by AWS.
+- Each SQS queue has limits on the number of API requests it can handle per second. If these limits are exceeded, AWS returns overlimit errors (HTTP 403 status code).
+- So overLimit is possible in case of short polling. While in case of long polling client wait for up to 20 secs before making an another API call.
+- Dead letter queue (DLQ):
+	- Say a message is corrupted then it can cause never ending loop, as it will never be marked as deleted by consumer, so handle this request message call contains "maxReceiveCount" and "receiveCount", so concurrent call increase the "receiveCount" by 1 and if it reaches max limit then the message gets moved to Dead letter queue.
+	- Immediate notification should be send in this case and we can leverage SNS for the same. 
+	- Once the message is repaired it can be moved to the queue using the dead letter queue redrive capability.
+	- Redrive allow policy is the resource that defines source queue and dead letter queues as well as the conditions to move messages from one type of queue to the other.
 	
 SNS (Simple Notification Service):
 -Follows pub-sub model using topics
+-Note: topics don't have storage capability, it pushes the messages to subscribers as soon as it gets it and no way of call back.
+-It also leverage push notification capability of devices. 
+-It provides both application-to-application or application-to-person communication.
+-It works well for high-throughput applications as well as many-to-many messaging between distributed systems.
 -Subscribers can be notified by either HTTP/S,EMAIL,EMAIL-JSON,SQS,APPLICATION, LAMBDA, SMS
+-We also have subscription filter policy in json format, to filter out certain kind of message for a subscriber. So here filter mentions what messages to be send.
+-An Amazon "SNS Delivery Policy" can be used to control the retry pattern as linear, geometric, exponential backoff, max and min retry delays, and other parameters during message delivery by the SNS topic.
+-When the message delivery retry policy is exhausted, Amazon SNS can move the message to a dead-letter queue (DLQ)
+-A DLQ is a Amazon SQS queue that an Amazon SNS subscription can target for messages that can't be delivered to subscribers successfully. 
+-Messages that can't be delivered are held in DLQ for further analysis or reprocessing.
+-Now the interesting thing comes, how to maintain the order of messages, how to avoid duplication of messages and moreover how to achieve idempotency (republish won't change the state of the system):
+	- SNS FIFO topic - introduced message group IDs, to make sure messages are send in the order of their arrival, also you can select content-based deduplication option, which will introduce deduplication ID as well using the actual body of the message :) So if the message is send to SQS queue (SQS FIFO queue) with deduplication Id then SQS will take care of it.
+	- FIFO topics can process 300 messages per second or 10 MB per second, whichever limit is hit first.
+	- Using FIFO topics, message ordering and deduplication can be achieved at the messaging layer.
+	- Accomplish idempotency at the messaging layer instead of having to modify applications
+
+Amazon MQ:
+- It is designed for applications that require standard messaging protocols and APIs like JMS, AMQP, MQTT, and STOMP.
+- Supports complex messaging patterns like request/reply, fan-out, and point-to-point.
+- upports failover capabilities to ensure high availability and reliability.
+- Can implement active and standby configurations with automatic failover.
+- Encyrption in transit using SSL and at rest using AES 256.
+- Network isolation using a private endpoint in your Amazon VPCs and configuring security groups to control network accessibility.
+- Migrating existing Queues and Topics without rewriting your code (from on-prem):	
+	- If you already using JMS, .NET message Service (NMS), MQ Telemetry Transport (MQTT), Websockets, then you easily migrate the topic/queue without any code changes.
+	- To achieve this we use Amazon MQ service (managed message broker service which supports Apache ActiveMQ and RabbitMQ), 
 
 SES (Simple Email Service):
 -Receiving email via SES - two types of controls - 1. IP Address-Based control 2. Receipient-Based Control
@@ -1539,10 +1635,17 @@ CloudWatch:
 	
 	EventBridge:
 	|_ It allows you to implement event driven architecture.
+	|_There are around 90+ services in AWS which creates events.
+	|_This is the only event-based service that integrates directly with third party support e.g. Zendesk, Auth0, Segment, etc., there are 30+ supported third-party services.
+	|_Each Event Bus can have up to 100 rules associated to it. Default event bus only fetches events from AWS services, so you can create your own custom event bus for external services.
+	|_The rules are not processed in any particular order
+	|_you can even create a schedule to trigger rule. You can also set a cronjob.
+	|_You can even have cross account evets.
+	|_It was earlier CloudWatch Event, then later it rebranded with additional functionalities to EventBridge.  
 	|_ Consist of:
 		- Rules : to filter and route the events and it can even route to multiple targets.
 		- Targets : e.g. AWS Lambda, SQS, Kinesis 
-		- Event buses: It receives event from your applications and your rules are associated with a specifi event bus. EventBridge uses a default event bus that is used to receive events from AWS services.
+		- Event buses: It receives event from your applications and your rules are associated with a specific event bus. EventBridge uses a default event bus that is used to receive events from AWS services.
 	Unified CloudWatch Agent:
 	|_ It can collect logs and additional metric data from EC2 instances as well from on-premise services running either a Linux or Windows OS
 	CloudWatch Insights:
@@ -1559,6 +1662,9 @@ CloudWatch:
 	|_You can create filter pattern which extract a specific string or term matching the pattern from the logs and we can also set threshold for the count of that term match.
 	Contributor Insights
 	|_Contributor insights visualize who your top contributors are, using time-series data extracted from your cloudTrail logs
+	|_EventBridge offers more advanced event routing and filtering capabilities compared to CloudWatch Events. It allows you to route events to specific targets (such as Lambda functions) based on rules and conditions.
+	|_EventBridge supports event routing to a broader range of AWS services, including Amazon ECS tasks, AWS Step Functions, AWS SNS, AWS SQS, and more.
+	|_EventBridge supports cross-account and cross-region event routing, making it suitable for complex, multi-account architectures.
 CloudTrail:
  |_ Events:
 	- Management Events:
@@ -1853,11 +1959,435 @@ Serverless architecture:
 	|_Event router processes the event and takes the necessary action in pushing the outcome to the consumers e.g. Amazon SNS, Amazon Kinesis and AWS Lambda.
 	|_Amazon SQS (Simple Queue Service) - commonly used in decoupled architecture.
 	
+AWS Lambda:
+	
+AWS Step Function:
+	|_ Serverless state machine service
+	|_It allows you to create serverless workflows where you can have your system wait for inputs, make decisions, and process information based on the input variables. 
+	|_|_ common usecases:
+		|_ Retry connection
+		|_ Wait before moving to the next action
+		|_ Run something in parallel
+		|_If-Then logic
+		|_ Sequencial or parallel step funcions
+		|_Along with Lambda we can overcome Lambda's limitation of 15 mins code execution time, so this combinatio extends the execution time.
+		|_States
+			|_Pass State:
+				|_It pass its input straight through to its output, as well as add a fixed result.
+			|_Task State:
+				|_This is where the work actually happened. With a task, you define a resource you wish step functions to run as well as a timeout period. E.g. you can plug in a Lambda fuction here to run some code. This state is often use a sub state or action within other state.
+			|_ Choice State:
+				|_Given an input, the state machine chooses the correct output. Basically an if then operation.
+			|_Wait State:
+				|_The state machine will pause and can wait until a specific time or until x amount of time has passed. This might be useful if you wanted an email to fire out at 8am everyday.
+			|_Success State:
+				|_Termination of the state machine in a successful fashion. It can be part of the choice state to end the state machine.
+			|_Fail State:
+				|_Termination state too just that end with failure.
+			|_Parallel State:
+				|_Executes a group of states as concurrently as possible and waits for each branch to terminate before moving on. The results of each parallel branch are combined in array-like format and will be passed onto the next state.
+			|_Map State:
+				|_Allows you to iterate through a list of items and perform tasks on them. You can also define the number of concurrent items being worked on at one time. This is basically like a for loop.
+	|_Integration with other services:
+		|_ Run an Amazon Elastic Container Service or AWS Fargate Task
+		|_Submit and AWS Batch job and wait for it to complete
+		|_Publish a message to an Amazon SNS topic
+		|_Send a message to an Amazon SQS queue
+		|_Start an AWS Glue job run
+		|_Create an Amazon SageMaker job to train a machine learning model or batch transform a data set.
+	|_It supports asynchornous callbacks, which is a very important functionality.
+	|_You can also have multiple child state machines under a parent state machine. Nest repeatable Step Functions. Saves time in the long run.
+
+AWS Fargate:
+	|_ This service allows you to run serverless containers on Amazon Elastic Container Service (ECS).
+	|_ You're allowed to run your Fargate tasks (containers) for an unlimited amount of time.
 	
 
+API Gateway:
+	|_AWS API Gateway is a fully managed service that makes it easy for developers to create, publish, maintain, monitor, and secure APIs at any scale. API Gateway handles all the tasks involved in accepting and processing up to hundreds of thousands of concurrent API calls, including traffic management, authorization and access control, monitoring, and API version management.
+	|_Endpoint types:
+		|_Edge optimized API Endpoint - use edge location for low latency
+		|_Regional API Ednpoint - Mainly used when backed services or end users are within the same region
+		|_Private API Endpoint - available only within the VPC
+	|_Supported Protocols:
+		|_HTTP (REST) Endpoint
+			|_Versions:
+				1. REST API (original version)
+					|_Customers looking to pay a single price point for an all-inclusive set of features needed to build, manage, and publish their APIs.
+				2. HTTP API (new)
+					|_Idea for:
+						1. Building proxy APIs for AWS Lambda or any HTTP endpoint
+						2. Building modern APIs that are equipped with OIDC and OAUTH2 authorization
+						3. Workloads that are likely to grow very large APIs for latency-sensitive workloads
+						
+		|_WebSocket Endpoint
+	|_Integration with other services:
+		|_Proxy integration
+			- It simply passes the request without modifying it to the backend
+			- It's great for rapid prototyping
+		|_Direct integration
+			- It modifies the request before sending it to the backend
+			- Make changes and not to be loacked into the backedn service's responses
+	|_Mock integration:
+		- It allows to generate response without the need to backend. It is used for default response or temporary response.
+	|_AWS Service integration
+		- Integrate with AWS SQS, AWS Step function
+		- It allows to connect to the services even if the user does not have the full access of it.
+		- Uses Direct integration
+	|_VPC Link integration:
+		- It allows you to connect to private VPC resources.
+		- It uses VPC endpoints
+		- uses Direct integration
+	|_Authorizers
+		- IAM Authorizer - available with all three HTTP API, REST API and Websocket
+		- AWS Lambda - mainly used to connect to third party identity provider. available with all three.
+		- Cognito Authorizer - Direct integration with Cognito user pool (with MFA). Available only with REST API.
+		- JWT Authorizer - This connect with OpenID compliant identity provider with connects with Cognito. available only for HTTP API (this way you can make Cognito available for HTTP API as well)
+	|_API Management and Usage
+		- You can create usage plan under API gateway and it is associated with API keys which is to share with the users to allow them to access the API and we can control the throttling and quota for the assocaited API keys. This way you can control the user usage and not to allow them the blow the system.
+	|_ Caching responses
+	|_ Sends CloudWatch events
+	|_It has method request/response and Integration request/response to change the HTTP method or body content if needed, including headers.
+	|_ Setting up mutual TLS/SSL
+		- Create and upload a Certificate Authority public key certificate bundle to API gateway
+		- You can create these keys using the AWS Certificate Manager Private Certificate Authority service, or you could also use OpenSSL.
+	|_Private integration with backend services
+		- It supports Amazon EC2, ECS, EKS
+		- It uses VPC links connect to other VPC resources. It needs NLB to be setup in the other VPC.
+	
+Amazon Kinesis:
+	|_It's a data streaming service, which connect, process and analyze event logs, social media feeds, clickstream data, application data, IoT sensor data.
+	|_Designed to stream binary-encoded data into AWS from millions of sources (audio and video data but it can be any type of binary-encoded time-series data)
+	|_The AWS SDKs make it possible to securely stream data to AWS for playback, storage, analytics, machine learning and other processing.	
+	|_Data can be ingested from: Smartphones, security cameras, edge devices, RADAR, LIDAR, drones, satellites, and dash cams.
+	|_Kinesis video streams supports the open-source project WebRTC, which allows for two-way, real-time media streaming between web browsers, mobile applications, and connected devices.
+	|_Data stream does not support auto-scale, but Firhose does auto scaling.
+	|_ No free tier. But no bill for provisioned capacity, only for used capacity.
+	|_Producers can be created using the AWS SDKs, the Kinesis Agent, the Kinesis APIs, or the Kinesis producer Library, KPL.
+	|_consumer read throughput: 2MB per second per shard. 5 API calls per second per shard. Each read request can return up to a total of 10000 records. It's possible to attach multiple consumer to same stream. Using a standard consumer, applications shared the same 2 megabyte per second read throughput. Because of this, no more than two or three functions could efficiently connect to the data strems simultaneously. That's the reason data must be spread across multiple streams. For high throughput we would need multiple streams with duplicate data.
+	|_Standard Consumers: Share the read throughput with other consumers. It uses poll mechanism to fetch the data.
+	|_Enhanced Fan-Out Consumers: Have dedicated read throughput, providing consistent and higher performance.It uses push mechanism to send the data to consumers. There can be up to 20 consumer applications registered to a stream. It uses HTTP/2. HTTP/2 allows multiple requests and responses to be multiplexed over a single TCP connection. This means that multiple streams of data can be sent concurrently without waiting for others to complete, significantly improving throughput and reducing latency.
+	|_Shard write limit: 1000 records per second -upto max of 1MB per second.
+	|_Recent update: Kinesis Data Streams On-Demand is now capable of serving gigabytes of write and read throughput per minute without capacity planning 
+	|_ GetShardIterator() - use to get the location of the first data record available in the Data Stream. Trim horizon - location of the oldest record.
+	|_KPL - Kinesis Producer Library
+		- Puts data into a Kinesis Data Stream
+		- Simplifies the development of Kinesis producer applications and allows programmers to achieve high write throughput to a Kinesis data stream.
+		-At the same time managing exception and error handling.
+		-It has a capability to do data record aggregation to combine multiple data into 1 record for max utilization and low billing. KCL do the reverse thing.
+	|_KCL (Kinesis Client Library):
+		-> can do load balancing across multiple Consumer application instances
+		-> Responds to Consumer application instance failure by checkpointing records
+		-> Reacts to resharing operation.
+		-> It acts as an intermediary between record processing logic and Kinesis Data Streams.
+		-> Manages operations automatically
+		-> Can automatically take care of common tasks related to creating Consumer applications.
+    |_ARN: arn:aws:kinesis:region:account-id:stream/stream-name		
+	|_ Types:
+		|_Kinesis Video streams
+		|_Kinesis Data Streams
+			|_A real-time data ingestion service from AWS
+			|_Producer application puts data into a stream as a series of Data records.
+			|_Producing rate limited to 1 megabyte per second per shard or 1000 writes per shard per second. Exceeding write limit will return error - ProvisionedThroughputExceededException.
+			|_No free tier. Kinesis Data Streams charges for open shards and for data records stored in a stream.
+			|_Kinesis agent for Linux and Windows along with AWS SDKs, CLIs and APIs are used for development, management and usage of Kinesis Data Streams.	
+			|_ Data stream is a set of Shards, and Shard contains a sequence of data records
+			|_ Data record consist of Sequence number, partition key and Data Blob
+			|_Kinesis data stream stores data for 24 hours to 365 days. Data cannot be changed or removed, it only expires.
+			|_consumers:
+				- Amazon kinesis data stream applications - get records from Kinesis Data stream and process them.
+				- Custom application can be created using the AWS SDks, the Kinesis API or, the KCL (Kinesis Client Library)
+			|_ command to create or describe data stream:
+				aws kinesis create-stream --stream-name mystream --shard-count 3
+				aws kinesis describe-stream --stream-name mystream --output json
+			|_ partition key (hash) on record decides on which shard it will reside.
+		|_Kinesis Data Firehose
+		    |_ Data Firehose uses producers to load data into streams in batches.
+			|_FIrehose acts like a producer, which maintain buffer for 60-900 secs and then publish it to data stores.
+			|_Firehose converts json data to Apache Parquet or Apache ORC before storing the data in S3.
+			|_Firehose can also use Lambda function to transform the data before sending it to data stores.
+			|_Expect latency of 60 secs or more
+			|_you pay for the amount of data going through it.
+			|_This is main delivery service used to get Kinesis Data Stream records to AWS Storage services.
+			|_Any application can produce messages for Kinesis Firehose to deliver to AWS Storage services.
+		|_Kinesis Data Analytics
+			|_Kinesis Data analytics has the ability to read from the stream in real time and do aggregation and analysis on data while it is in motion.
+			|_It does this by levaraging SQL queries or with Apache Flink (only available for Kinesis Data streams) using Java or Scala to perform time-series anlytics, feed real-time dashboards, and create real-time metrics.
+			|_Has built-in templates and operators for common processing fuctions to organize, transform, aggregate, and analyze data at scale. use cases include ETL (to enrich ,organize and transform data to match the schema of a Data lake or a Data warehouse), the generation of continous metrics, and doing responsive real-time analytics.
+		|_Resharind - using updateShardCount we can either split or merge the shards. Shard before resharing is called parent and after resharing it's called child shard. The child shards start receiving new records immediately after the split operation is complete, but the old records remain in the parent shard until their retention period expires. The original shard (parent shard) will stop taking new records once the split operation begins.
+		|_ only one split or mege can happen at a time. Request take some time to complete. e.g. if a stream has 1000 shards, and need to be doubled, it will take around 30,000 secs to complete (>8 hours).
+		|_If data is read from a child shard before the parent shard has been completely consumed, data could be out of order.
+		|_The default shard quota is 500 shards per AWS account for the following AWS regions: US east, US west, and Europe. For all other regions, the count is 200.
+		|_Max shards count seems 10,000.
+		|_Things to consider while creating Data stream:
+			1. Avg size of a data record e.g. 1KB
+			2. Total no. of records per second e.g. 5000
+			3. No. of consumers e.g. 10
+			4. calculate for bandwidth to be ingested: 5000 * 1 = 5000KB (incoming write bandwidth)
+			5. calculate for amount of data to be consumed: 5000 * 10 = 50000
+			6. calculate for number of shards needed: greater of incoming bandwidht/1000 or outgoing read bandwidht/2000 e.g. 5000/1000 < 50000/2000 i.e. 25 shards.
+Stream processing
+ |_ created to address issues of latency, session boundaries, and inconsistent load.
+ |_ The term streaming is used to describe information as it flows continuously without a beginning or an end.
+ |_In streaming, actions and analytics needs to be up-to-date and reflect data while it is still fresh, meaningful, and valuable.
+ |_No need of large expensive shared DB, stream processing fits naturally inside a microservices architecture
+ |_Streamig data Augments Batch Processing
+ |_Immediacy matters!!!
+ |_Streams can be architected to reflect how people use applications. This means strems match real-world processes.
+
+EMR (Elastic MapReduce):
+	|_ Amazon EMR (Elastic MapReduce) is a cloud-based big data platform that provides a managed Hadoop framework. It enables users to process vast amounts of data quickly and cost-effectively by distributing the computational load across a resizable cluster of Amazon EC2 instances. 
+	|_ Amazon EMR simplifies running big data frameworks like Apache Hadoop, Apache Spark, Apache HBase, Apache Flink, Apache Hudi, and Presto on the AWS cloud. It provides a managed environment for these frameworks, handling provisioning, configuring, and tuning of the underlying infrastructure.
+	|_ Node Types:
+		|_Master Node: Manages the cluster, coordinating the distribution of data and tasks among other nodes. It runs software components like the ResourceManager and HDFS NameNode.
+		|_Core Node: Executes tasks and stores data using the Hadoop Distributed File System (HDFS). These nodes run DataNodes and NodeManagers.
+		|_Task Node: Purely executes tasks without storing data in HDFS. These nodes are optional and can be added or removed to adjust the computational capacity of the cluster.
+Amazon Managed Streaming for Apache Kafka (Amazon MSK):
+	|_This is a managed Kafka Service
+	|_Brokers are backed by EBS volumes, and gains all the protections that EBS provides, like durability and fault tolerance.
+	|_You can also encrypt these data volumes using Amazon EBS Server-side encryption and AWS KMS.
+	|_You can only increase the amount of storage; it can not be decreased.
+	|_The broker storage can be autoscaled upwards if you do start to reach your max capacity.
+	|_You can use mirror maker to migrate your on-prem Kafka cluster into Amazon MSK.
+	
+Amazon Device Farm Service:
+	|_ AWS Device Farm is an app testing service that lets you test and interact with your Android, iOS, and web apps on many devices at once, or reproduce issues on a device in real time.
+	|_Device Farm can also be used through a remote access session which allows developers and testers to interact with the device through browser, emulating the same experience they would get as they testing the physical device. you can really interact with the physical device and perform operation like rotate the device, install applications, swipe and gestures, as well as other interactions.
+	|_Note devices cannot connect with each other or take photos or videos of each other.
+	|_It includes service plugins and APIs that can be configure to automatically initiate tests from IDEs and continuous integration systems
+	|_They even help you with report of crash details, screenshots, etc., also you can download testing logs and performance data. 
+
+Amazon Pinpoint:
+	|_Amazon pinpoint makes it easy to run targeted campaigns to drive user engagement in mobile apps.
+	|_It helps you to understand user behaviour and determines which users to target and determine which messages to send, schedules the best time to deliver the messages and then track the results of your campaign.
+	|_It helps with charts, graphs and metrics in console.
+	|_Basically it helps with almost everything you need to have a interesting user engagement and successful campaign.
+	|_It helps with you SDKs to integrate your app with Amazon Pinpoint.
+	|_It helps with notification optimization and delivering effective messages.
+	|_Features:
+		|_ Collect App usage data. These data can help you to create targetted push notification.
+		|_It provides a graphical dashboard with user engagement details, and demographics
+		|_It also helps with template for silent or standard notifications.
+		|_It helps with Campaign scheduling, by allowing to configure notification schedule and it consider user timezones too :).
+		|_It helps you with notification open rate as well as opt-out rate.
+		|_It allows you to export all the data and you can use your own anlytics on top of it.
+		|_Use A/B test feature, you can send different notification or have campaign for your subset of users.
+		|_You can have Funnel analytics data too, you can define upto 5 steps in each funnel, you can get data like user participation details, etc.,  google it!
+		
+		
+		
+Architecture Basics:
+ |_common technology stacks for multi-tier architecture:
+	|_ LAMP - LINUX, APACHE WEB SERVER, MYSQL DB, PHP (quite old)
+	|_ MEAN
+	|_ SERVERLESS - generally use Amazon API Gateway, AWS Lambda.
+	|_ MICROSERVICES
+
+AWS AppSync:
+ |_	AWS AppSync allows you to manage and synchronize data across multiple mobile devices and users.
+ |_It allows you to build real-time multi-user collaborative tools and applications that work between browsers, mobile applications, and even Amazon Alexa skills.
+ |_AWS AppSync uses GraphQL to enable clients to fetch, change, and subscribe to data from databases, microservices, and APIs all from a single GraphQL endpoint.
+ 
+
+Migration and Data Transfer:
+	-> 7 Rs
+		|_Rehosting (Lift-and-Shift)
+			--> With minimum changes to the existing code and architecture.
+		|_Relocating
+			--> Move applications to the cloud without changing their infrastructure. This often involves moving virtual machines (VMs) to a cloud environment like VMware Cloud on AWS.
+		|_Replatforming (Lift-Tinker-and-Shift)
+			--> Make a few cloud optimizations to achieve some tangible benefit without changing the core architecture of the application. e.g. moving from self managed DB to a managed DB service.
+		|_Refactoring (Rearchitect)
+			--> Re-architecting and re-coding applications to make them more cloud-native. This involves major changes to the application architecture and codebase to fully leverage cloud capabilities. e.g. Applications that require cloud-native features such as serverless, microservices, and containers OR applications with a strong business case for modernization.
+		|_Repurchasing (Drop-and-Shop)
+			--> Move to a different product, typically by purchasing a new software solution or SaaS product that replaces the existing application. e.g. Legacy applications that are not worth migrating or modernizing.
+		|_Retiring
+			--> Decommission or archive applications that are no longer needed.
+			--> Ensure that all data and compliance requirements are met before retiring applications.
+		|_Retaining (Revisit)
+			--> Keep some applications on-premises or in their current environment while making plans to revisit them in the future.
+			--> Applications that are tightly coupled to on-premises systems.
+			--> Applications that require further evaluation or are not ready for migration.
+	-> Stages of migration:
+		|_Assess
+			-> Enables formulation of goals and objectives
+			-> Related services:
+				|_ AWS Migration Evaluator
+					-- In 2018, AWS acquired TSO logic, and the Migration Evaluator service was born.
+					-- Provides a mechanism to help you baseline your on-premises environment
+					-- Project costs using cost modeling and data analysis 
+					-- Accelerates your successful digital transformation migration to AWS
+					-- Helps to keep expenditure low throughout your migration process
+					-- Identifies recommendations of resource sizing based upon CPU utilization, processor, RAM, and OS
+					-- Migration Evaluator can help reduce your overall costs by up to 50%
+					-- Business stakeholders can download a one-page summary showing cost analysis data and data usage patterns
+					-- Datailed analysis is also available for technical audiences showing data on a per-server level
+					-- To request additional information than what is provided, reach out to your AWS account manager
+				|_ AWS Migration Hub
+					-- Provides a dashboard overview of your migration project
+					-- Acts as the nerve center of your migration
+					-- Discover and migrate existing services in different locations
+					-- Migration Hub: A powerful tool to help manage large migrations across multiple locations with multiple services.
+					-- Service Integrations:
+						|_ Migration Hub Import 
+							-- This helps to import data from on-premises servers or applications
+						|_ Migration Evaluator Collector
+							-- It feeds migration hub, providing insights to help build a business case and plan strategy.
+						|_ AWS Agentless Discovery Connector
+							-- This is a VMware appliance that is used to collect data and discover information relating to any VMware virtual machines that you might be using within your data center.
+						|_ AWS Application Discovery Agent
+							-- This agent, created by AWS, is installed on your own servers and virtual machines that you would be running in your current data center with the main objective being to collate metrics and information relating to system configuration, system performance, running processes, and network connections
+					-- Using these sources, the Migration Hub can then view technical specifications and performance inforation about the discovered resources
+					-- Gain in-depth understading of what servers you have, how many there are, and how many applications
+					-- Perform detailed analysis					
+		|_Mobilize
+			-> Emphasis on detailed migration planning and strategy
+			-> Helps to define migration strategies consisting of 7 Rs
+			-> Identifies any skill gaps in your workforce
+			-> Related services:
+				|_ AWS Application Discovery Service
+				|_ AWS Control Tower
+		|_Migrate & Modernize
+			-> Used to design your deployments and solutions
+			-> Identify any dependencies and understand interconnectivity required between AWS services
+			-> Validation of your designs
+			-> Related services:
+				|_ AWS migration services used for servers, DB's and Applications:
+					|_ AWS Application Discovery Service
+					|_ AWS Database Migration Service (AWS DMS)
+				|_ AWS migration services used for migration of data:
+					|_ AWS Transfer Family
+					|_ AWS DataSync
+						-- Has build-in data transfer network protocol
+						-- Parallel, multithreaded architecture
+						-- 10 Gbps over a network link between your on-prem data center and your AWS environment
+						- Support TLS for encryption and Data validation
+						-- Flat pricing strategy based on per GB of data transferred
+						-- Interesting usecase : send the data to AWS for processing and get the processed data back to on-prem 
+					|_ AWS Snow Family
+					|_ AWS Service Catalog
+					|_ AWS Storage Gateway
+					
+
+AWS Snow family:
+	|_ Consist of Snowcone, Snowball and Snowmobile
+	|_ These are physical hardwares used to carry data from on-prem to AWS and vice versa.
+	|_ Snowcone support up to 8 TB, whereas Snowmobile up to 100 Petabytes.
+	
+
+
+-----------High Availability----------------
+Runbook and Playbook:
+ |_ Runbook: A runbook is a detailed set of instructions for performing specific operational tasks or procedures. It is more focused and task-oriented compared to a playbook.
+ |_ Playbook: 
+	-> A playbook is a comprehensive document that outlines a set of strategies, workflows, procedures, and best practices for responding to various scenarios, including incidents, operational tasks, and business processes.
+	-> Create a playbook with common issues
+	-> Write down where everything is located or stored
+	-> Retain logs or metrics
+	-> Implement:
+		-> Best implemented as code (maybe some kind of troubleshooting app)
+		-> Need to be properly documented
+	-> Automate Tasks
+		-> Lambda function + Eventbridge - to execute scheduled tasks or tasks that respond automatically to some events.
+		-> EventBridge + Lambda + Cloudwatch alarms: can set thresholds that trigger actions and notify personnel when met.
+	-> Do post-Mortem Analysis - document what even wrong and weakness in the system and what closed an incident. Fix the failure first and set aside sometime for this.
+ |_ Game day: Day to test Runbook and Playbook. Takes place in production :) 
+ |_ Any deviation from the current playbooks is fine as long as the document is updated right away.
+		
+		
+AWS Fault Injection Simulator (FIS):
+	|_ AWS service for Chaos Enginnering 
+	|_ Apply distruptions from the templates provided by FIS
+	|_ Run the experiments with controls and limits provided by FIS, such rolling back, stopping the experiment, etc.
+
+General DR points:
+	|_ DynamoDB is Multi-AZ by default and automatically handle AZ failure, whereas RDS can support multi-AZ but manually need to promote standby to primary.
+	|_Load balancer can detect failure and command your EC2 instance to restart or spin up in a different AZ. So this can be used even for a single EC2 instance to handle failure. Similarly, Auto Scaling helps you take advantage of multiple AZs. Even for  ECS we would configuration to handle failure.
+	|_ Lambda can be combined with EventBridge to make a powerful tool for self-healing apps.
+	|_ Lambda can also be called from Step Functions to create an additional layer of retry logic and timeout logic.
+	|_ Step function can be used for developing built-in logic for timeouts, retries, and long delays.
+	|_ EFS:
+		- Backed by S3 and is fully redundant
+		- Critical part of a self-healing deployment
+		- keeps multiple copies of your data.
+	|_ RTO(Recovery Time Objective): RTO is the maximum acceptable amount of time that an application, system, or business process can be offline after a disaster or failure occurs before causing significant harm to the business. Example - If an e-commerce website has an RTO of 2 hours, the goal is to ensure the website is back online and operational within 2 hours of an outage.
+	|_ RPO(Recovery Point Objective): RPO is the maximum acceptable amount of data loss measured in time. It represents the point in time to which data must be restored to resume business operations after a disaster or failure. Example - If a financial services application has an RPO of 30 minutes, the backup strategy must ensure that no more than 30 minutes of data is lost in the event of a failure.
+	
+RDS multi-AZ:
+	|_ The replication of data happens synchronously
+	|_ RDS uses a Failover mechanism on Oracle, MySQL, MariaDB and PostgreSQL instances
+	|_ The RDS failover process happens automatically and is managed by AWS 
+	
+SQL Server Multi-AZ:
+	|_ Mutli-AZ is available on SQL Server 2008 R2, 2012, 2014, 2016 and 2017 on both standard and Enterprise editions
+	|_SQL mirroring provisions a secondary RDS instance in a seperate AZ than that of the primary RDS instance to help with resilience and fault tolerance.
+	|_ Both primary and secondary instances in SQL Server mirroring use the same Endpoint
+	|_ To check the AZ the standby instance is in you can use the AWS CLI command 'describe-db-instances'
+	
+
+Read Replicas:
+	|_ Read replicas are NOT used for resiliency or as secondary instance in the event of a failover
+	|_ Read replicas are used to serve read-only access to your DB data vai a seperate instance
+	|_ You can now create up to 15 read replicas from one DB instance within the same region when using MYSQL
+	
+Cost Management: 
+	|_ Types of Budget actions:
+		|_ Change the IAM permissions of users and roles in your account
+		|_ Change Service Control Permissions at the AWS Organization level or Organizational Unit Level
+		|_ Select EC2 and RDS instances you want to stop once an alert threshold is crossed.
+	|_ AWS Cost Anomaly detection:
+		|_ Evaluate costs based on:
+			|_ AWS Service
+			|_ Linked accounts/cost per project
+			|_ Cost allocation tags
+			|_ Cost categories
+	|_ Integration of Cost Anomaly detection with AWS Budgets gives better insights.
+	|_ Tags provide the functionality to define metadata in the form of key and value pairs, that are associated with the resources in a cloud account.
+	|_ After you set up a cost and usage report (CUR) , you receive the current month's billing data and daily updates in the same Amazon S3 bucket.
+	|_ You can make use of AWS CUR API for automation or easier mgmt through API calls
+	|_ Use the CUR for in-depth analysis with business intelligence tools like Quicksight, Athena, and others.
+	|_ You can use AWS Resource Manager --> Tag Editor, to manage tags of multiple resources in one go.
+	|_ We can setup policies to forbit launches of resources without tag
+
+
+Resource Utilization Services:
+	|_ AWS Compute Optimizer
+		-- Tracks EC2 instances, Auto Scaling groups, EBS volumes, AWS Lambda and categorized them under under-provisioned, over-provisioned, and optimized.
+		-- Under-provisioned means it lacks in power in terms of CPU, memory, or network.
+		-- AWS compute optimizer uses machine learning, and collects information on the past 14 days of resource usage from CloudWatch.
+		-- EC2 recommendations obtained from CloudWatch metrics for:
+			- CPU utilization
+			- Network packets per second
+			- Local storage throughput
+			- Local storage IOPS
+		-- For Lambda, it is:
+			- Function invocation history
+			- Function runtime duration
+			- CPU time used
+			- Memory usage
+	|_ AWS Cost Explorer
+	|_ AWS Trusted Advisor
+	
+AWS Instance Scheduler:
+	|_ AWS Scheduler allows you to stop and start your EC2 or RDS instances automatically in multiple regions and accounts.
+	|_ AWS customers can minimize instance costs across their AWS environment
+	|_ AWS Instance Scheduler is a tool that allows you to automatically start and stop Amazon EC2 and Amazon RDS instances based on a predefined schedule. This helps optimize costs by ensuring that instances are only running when they are needed
+	|_ AWS Instance Scheduler is a solution that uses AWS Lambda and Amazon CloudWatch to manage the running states of EC2 and RDS instances. It allows you to create custom schedules that automatically start or stop instances, reducing unnecessary running costs.
+	|_ Custom Schedules: Define schedules that specify when instances should be started or stopped.
+	|_ Tag-Based Management: Use tags to specify which instances should be managed by the scheduler.
+	|_ Cross-Region Support: Manage instances across multiple AWS regions from a single scheduler setup.
+	|_ Scalability: The solution scales automatically to handle any number of instances.
+	|_ AWS provides a CloudFormation template that you can use to deploy the Instance Scheduler. This sets up the necessary resources, including Lambda functions, CloudWatch rules, DynamoDB tables, and IAM roles.
+	|_ Create schedules in DynamoDB tables, specifying the desired start and stop times. Schedules can be defined using cron expressions or by specifying intervals in hours.
+	|_ Apply specific tags to the instances you want to manage. The default tag key is Schedule, but this can be customized.
+	|_ use case: Suppose you have development and testing environments that are only needed during business hours (e.g., 9 AM to 6 PM, Monday to Friday). 
+	|_ The deployed Lambda functions are triggered by CloudWatch Events based on the defined schedules. These functions check the schedules and perform the start or stop actions on the tagged instances.
+	|_ The schedules and configuration are stored in DynamoDB tables. The Lambda functions query these tables to determine the actions to take.
+	
 Questions:
 1. cloud watch vs cloud trail
 2. can multiple VPCs use the same VPC endpoint?
+3. What is CloudEndure
 
 
 ---OReilly SAP-C02 Crash course notes--
@@ -1886,10 +2416,12 @@ The seven layers of networking refer to the OSI (Open Systems Interconnection) m
 - Presentation Layer: This layer is responsible for data translation, encryption, and compression to ensure that information sent by one system can be understood by another. An example is encryption protocols like SSL/TLS, which secure data transmitted over the internet, such as online banking transactions or login credentials.
 - Application Layer: The application layer provides network services directly to end-users and applications. It includes protocols for specific tasks such as email (SMTP), file transfer (FTP), and web browsing (HTTP). An example is using an email client like Microsoft Outlook or Gmail to send and receive emails.
 	
-	
+|_ Federal Information Processing Standard (FIPS)
+ - A set of standards that describes document processing, encryption algorithms, and other information technology standards for use within non-military government agencies; and by government contractors and vendors who work with those agencies.	
 
 links:
 https://www.awsyarn.com/how-to-pass-aws-sa-professional-sap-c02-certification/
+https://github.com/SwaroopGiri/AWS-SAP-C02-Notes?tab=readme-ov-file
 
 	
 	
