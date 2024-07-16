@@ -507,3 +507,61 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Successfully created PVC ${NEW_PVC_NAME} using volume ID ${NEW_VOLUME_ID}"
+
+
+
+--override functionality--
+#!/bin/bash
+
+# Define your local file path and S3 bucket
+LOCAL_FILE="/path/to/your/local/file"
+S3_BUCKET="s3://your-bucket-name"
+S3_FILE_PATH="path/in/bucket/to/file"
+
+# Define the override flag
+OVERRIDE=false  # Change this to true if you want to force download
+
+# Function to download file from S3
+download_from_s3() {
+    aws s3 cp "$S3_BUCKET/$S3_FILE_PATH" "$LOCAL_FILE"
+    if [ $? -eq 0 ]; then
+        echo "Downloaded $S3_BUCKET/$S3_FILE_PATH to $LOCAL_FILE"
+    else
+        echo "Failed to download $S3_BUCKET/$S3_FILE_PATH" >&2
+    fi
+}
+
+# Check if the local file does not exist or if override is true
+if [ "$OVERRIDE" = true ] || [ ! -f "$LOCAL_FILE" ]; then
+    download_from_s3
+else
+    echo "File $LOCAL_FILE already exists, skipping download."
+fi
+
+--------------------
+#!/bin/bash
+
+# Define your local file path and S3 bucket
+LOCAL_FILE="/path/to/your/local/file"
+S3_BUCKET="s3://your-bucket-name"
+S3_FILE_PATH="path/in/bucket/to/file"
+
+# Define the override flag
+OVERRIDE=false  # Change this to true if you want to force copy
+
+# Function to copy file to S3
+copy_to_s3() {
+    aws s3 cp "$LOCAL_FILE" "$S3_BUCKET/$S3_FILE_PATH"
+    if [ $? -eq 0 ]; then
+        echo "Copied $LOCAL_FILE to $S3_BUCKET/$S3_FILE_PATH"
+    else
+        echo "Failed to copy $LOCAL_FILE to $S3_BUCKET/$S3_FILE_PATH" >&2
+    fi
+}
+
+# Check if the file does not exist in S3 or if override is true
+if [ "$OVERRIDE" = true ] || ! aws s3 ls "$S3_BUCKET/$S3_FILE_PATH" > /dev/null 2>&1; then
+    copy_to_s3
+else
+    echo "File $S3_BUCKET/$S3_FILE_PATH already exists, skipping copy."
+fi
