@@ -565,3 +565,10 @@ if [ "$OVERRIDE" = true ] || ! aws s3 ls "$S3_BUCKET/$S3_FILE_PATH" > /dev/null 
 else
     echo "File $S3_BUCKET/$S3_FILE_PATH already exists, skipping copy."
 fi
+
+
+
+------------remove finalizer from Kafka topic---------
+for cluster in $(kubectl get kafkas -n <namespace> -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl patch kafka $cluster -n <namespace> -p '{"metadata":{"finalizers":[]}}' --type=merge
+done
