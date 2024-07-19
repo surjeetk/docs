@@ -572,3 +572,183 @@ fi
 for cluster in $(kubectl get kafkas -n <namespace> -o jsonpath='{.items[*].metadata.name}'); do
   kubectl patch kafka $cluster -n <namespace> -p '{"metadata":{"finalizers":[]}}' --type=merge
 done
+
+
+------------init container sh----------
+#!/bin/sh
+
+process_files() {
+  FILES=$1
+
+  if [ -z "$FILES" ]; then
+    echo "No files to process."
+    return
+  fi
+
+  FILES=$(echo $FILES | jq -r '.[] | @base64')
+
+  for file in $FILES; do
+    _jq() {
+      echo ${file} | base64 --decode | jq -r ${1}
+    }
+
+    SRC=$(_jq '.src')
+    DEST=$(_jq '.dest')
+    PERMISSIONS=$(_jq '.permissions')
+    OVERRIDE=$(_jq '.override')
+
+    if [ "$OVERRIDE" = "true" ]; then
+      aws s3 cp "$SRC" "$DEST" --recursive
+    else
+      aws s3 sync "$SRC" "$DEST"
+    fi
+
+    chmod -R $PERMISSIONS $DEST
+  done
+}
+
+# Process common files for all processes
+process_files "$FILES_IN_ALL"
+
+# Process common files for stateful or stateless processes
+if [ "$PROCESS_TYPE" = "STATEFUL" ]; then
+  process_files "$FILES_IN_STATEFUL"
+elif [ "$PROCESS_TYPE" = "STATELESS" ]; then
+  process_files "$FILES_IN_STATELESS"
+fi
+
+# Process specific files for the process
+process_files "$FILES_IN_SPECIFIC"
+
+-----------------------sidecar container sh-----------------
+#!/bin/sh
+
+process_files() {
+  FILES=$1
+  OVERRIDE=$2
+
+  if [ -z "$FILES" ]; then
+    echo "No files to process."
+    return
+  fi
+
+  FILES=$(echo $FILES | jq -r '.[] | @base64')
+
+  for file in $FILES; do
+    _jq() {
+      echo ${file} | base64 --decode | jq -r ${1}
+    }
+
+    SRC=$(_jq '.src')
+    DEST=$(_jq '.dest')
+
+    if [ "$OVERRIDE" = "true" ]; then
+      aws s3 cp "$SRC" "$DEST" --recursive
+    else
+      aws s3 sync "$SRC" "$DEST"
+    fi
+  done
+}
+
+while true; do
+  # Process common files for all processes
+  process_files "$FILES_OUT_ALL" "$OVERRIDE_ALL"
+
+  # Process common files for stateful or stateless processes
+  if [ "$PROCESS_TYPE" = "STATEFUL" ]; then
+    process_files "$FILES_OUT_STATEFUL" "$OVERRIDE_STATEFUL"
+  elif [ "$PROCESS_TYPE" = "STATELESS" ]; then
+    process_files "$FILES_OUT_STATELESS" "$OVERRIDE_STATELESS"
+  fi
+
+  # Process specific files for the process
+  process_files "$FILES_OUT_SPECIFIC" "$OVERRIDE_SPECIFIC"
+
+  sleep $INTERVAL
+done
+
+
+----------------values.yaml-------------
+apiVersion: apps/v1
+kind: {{ .Values.processes.type | title }}
+metadata:
+  name: {{ .Values.processes.name }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.processes.name }}
+    spec:
+      volumes:
+        - name: my-storage
+          persistentVolumeClaim:
+            claimName: my-pvc
+      initContainers:
+        - name: init-container
+          image: amazon/aws-cli
+          env:
+            - name: FILES_IN_ALL
+              value: '{{ toJson (index .Values.fileTransfers.transferIn.processes (index (pluck "processName" .Values.fileTransfers.transferIn.processes) "ALL") "files") | default "" }}'
+            - name: FILES_IN_STATEFUL
+              value: '{{ toJson (index .Values.fileTransfers.transferIn.processes (index (pluck "processName" .Values.fileTransfers.transferIn.processes) "STATEFUL") "files") | default "" }}'
+            - name: FILES_IN_STATELESS
+              value: '{{ toJson (index .Values.fileTransfers.transferIn.processes (index (pluck "processName" .Values.fileTransfers.transferIn.processes) "STATELESS") "files") | default "" }}'
+            - name: FILES_IN_SPECIFIC
+              value: '{{ toJson (index .Values.fileTransfers.transferIn.processes (index (pluck "processName" .Values.fileTransfers.transferIn.processes) .Values.processes.name) "files") | default "" }}'
+            - name: PROCESS_TYPE
+              value: '{{ .Values.processes.type | upper }}'
+            - name: PROCESS_NAME
+              value: '{{ .Values.processes.name }}'
+          command: ["/bin/sh", "-c", "/init-container-script.sh"]
+          volumeMounts:
+            - name: my-storage
+              mountPath: /mnt/data
+      containers:
+        - name: main-container
+          image: nginx
+          volumeMounts:
+            - name: my-storage
+              mountPath: /usr/share/nginx/html
+        - name: sidecar-container
+          image: amazon/aws-cli
+          env:
+            - name: FILES_OUT_ALL
+              value: '{{ toJson (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "ALL") "files") | default "" }}'
+            - name: FILES_OUT_STATEFUL
+              value: '{{ toJson (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "STATEFUL") "files") | default "" }}'
+            - name: FILES_OUT_STATELESS
+              value: '{{ toJson (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "STATELESS") "files") | default "" }}'
+            - name: FILES_OUT_SPECIFIC
+              value: '{{ toJson (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) .Values.processes.name) "files") | default "" }}'
+            - name: OVERRIDE_ALL
+              value: '{{ index (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "ALL") "files") "override" | default "false" }}'
+            - name: OVERRIDE_STATEFUL
+              value: '{{ index (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "STATEFUL") "files") "override" | default "false" }}'
+            - name: OVERRIDE_STATELESS
+              value: '{{ index (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) "STATELESS") "files") "override" | default "false" }}'
+            - name: OVERRIDE_SPECIFIC
+              value: '{{ index (index .Values.fileTransfers.transferOut.processes (index (pluck "processName" .Values.fileTransfers.transferOut.processes) .Values.processes.name) "files") "override" | default "false" }}'
+            - name: INTERVAL
+              value: '{{ index (pluck "interval" .Values.fileTransfers.intervals (index (pluck "processName" .Values.fileTransfers.intervals) .Values.processes.name)) 0 | default 60 }}'
+            - name: PROCESS_TYPE
+              value: '{{ .Values.processes.type | upper }}'
+            - name: PROCESS_NAME
+              value: '{{ .Values.processes.name }}'
+          command: ["/bin/sh", "-c", "/sidecar-container-script.sh"]
+          volumeMounts:
+            - name: my-storage
+              mountPath: /mnt/data
+          env:
+            - name: AWS_REGION
+              value: us-east-1
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: aws-secret-access-key
