@@ -752,3 +752,147 @@ spec:
                 secretKeyRef:
                   name: aws-secret
                   key: aws-secret-access-key
+
+
+
+----------------------------------------------------------------------------------------------------------------------------
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "$#" -lt 2 ]; then
+  echo "Usage: $0 logicalName=<logical-group-name> namespace=<namespace>"
+  exit 1
+fi
+
+# Parse arguments
+for arg in "$@"; do
+  case $arg in
+    logicalName=*)
+      LOGICAL_NAME="${arg#logicalName=}"
+      ;;
+    namespace=*)
+      NAMESPACE="${arg#namespace=}"
+      ;;
+    *)
+      echo "Invalid argument: $arg"
+      exit 1
+      ;;
+  esac
+done
+
+if [ -z "$LOGICAL_NAME" ] || [ -z "$NAMESPACE" ]; then
+  echo "Both logicalName and namespace are required."
+  exit 1
+fi
+
+# Start timer
+START_TIME=$(date +%s)
+
+echo "Starting restore process for logical group: $LOGICAL_NAME in namespace: $NAMESPACE"
+
+# Fetch VolumeSnapshots for the given logicalName
+VOLUMESNAPSHOTS=($(kubectl get volumesnapshot -n "$NAMESPACE" -o json | jq -r --arg logicalName "$LOGICAL_NAME" '.items[] | select(.metadata.annotations.logicalGroupName == $logicalName and .metadata.annotations.backupStatus == "Success") | .metadata.name'))
+
+if [ ${#VOLUMESNAPSHOTS[@]} -eq 0 ]; then
+  echo "No successful VolumeSnapshots found for logical group: $LOGICAL_NAME"
+  exit 1
+fi
+
+echo "Found ${#VOLUMESNAPSHOTS[@]} VolumeSnapshots to restore: ${VOLUMESNAPSHOTS[*]}"
+
+# Scale down StatefulSets
+STATEFULSETS=($(kubectl get statefulsets -n "$NAMESPACE" -o json | jq -r '.items[].metadata.name'))
+for sts in "${STATEFULSETS[@]}"; do
+  echo "Scaling down StatefulSet: $sts"
+  kubectl scale statefulset "$sts" -n "$NAMESPACE" --replicas=0
+done
+
+# Wait for StatefulSets to scale down
+echo "Waiting for StatefulSets to scale down..."
+kubectl wait --for=delete pod -l app.kubernetes.io/instance="$LOGICAL_NAME" -n "$NAMESPACE" --timeout=300s
+
+# Backup and Restore PVCs
+declare -A ROLLBACK_SNAPSHOTS
+for vs in "${VOLUMESNAPSHOTS[@]}"; do
+  PVC_NAME=$(kubectl get volumesnapshot "$vs" -n "$NAMESPACE" -o jsonpath='{.spec.source.persistentVolumeClaimName}')
+  
+  echo "Creating backup snapshot for existing PVC: $PVC_NAME"
+  BACKUP_SNAPSHOT_NAME="rollback-$PVC_NAME-$(date +%s)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: $BACKUP_SNAPSHOT_NAME
+  namespace: $NAMESPACE
+spec:
+  source:
+    persistentVolumeClaimName: $PVC_NAME
+EOF
+  ROLLBACK_SNAPSHOTS["$PVC_NAME"]="$BACKUP_SNAPSHOT_NAME"
+
+  # Wait for the backup snapshot to be ready
+  kubectl wait --for=condition=ready volumesnapshot "$BACKUP_SNAPSHOT_NAME" -n "$NAMESPACE" --timeout=300s
+
+  echo "Deleting existing PVC: $PVC_NAME"
+  kubectl delete pvc "$PVC_NAME" -n "$NAMESPACE"
+
+  echo "Restoring PVC: $PVC_NAME from VolumeSnapshot: $vs"
+  cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: $PVC_NAME
+  namespace: $NAMESPACE
+  annotations:
+    restoreStatus: "InProgress"
+spec:
+  dataSource:
+    name: $vs
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  storageClassName: <your-storage-class>
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: <desired-storage-size>
+EOF
+done
+
+# Wait for all PVCs to bind
+echo "Waiting for PVCs to bind..."
+for vs in "${VOLUMESNAPSHOTS[@]}"; do
+  PVC_NAME=$(kubectl get volumesnapshot "$vs" -n "$NAMESPACE" -o jsonpath='{.spec.source.persistentVolumeClaimName}')
+  kubectl wait --for=condition=Bound pvc "$PVC_NAME" -n "$NAMESPACE" --timeout=300s
+done
+
+# Update restore status annotations
+for vs in "${VOLUMESNAPSHOTS[@]}"; do
+  kubectl annotate volumesnapshot "$vs" -n "$NAMESPACE" restoreStatus="Success" --overwrite
+done
+
+# Scale up StatefulSets
+for sts in "${STATEFULSETS[@]}"; do
+  echo "Scaling up StatefulSet: $sts"
+  kubectl scale statefulset "$sts" -n "$NAMESPACE" --replicas=1
+done
+
+# Wait for StatefulSets to scale up
+echo "Waiting for StatefulSets to scale up..."
+for sts in "${STATEFULSETS[@]}"; do
+  kubectl rollout status statefulset "$sts" -n "$NAMESPACE" --timeout=300s
+done
+
+# End timer
+END_TIME=$(date +%s)
+TOTAL_TIME=$((END_TIME - START_TIME))
+
+echo "Restore process completed successfully in $TOTAL_TIME seconds."
+
+# Cleanup rollback snapshots if everything is successful
+echo "Cleaning up rollback snapshots..."
+for snapshot in "${ROLLBACK_SNAPSHOTS[@]}"; do
+  kubectl delete volumesnapshot "$snapshot" -n "$NAMESPACE"
+done
+
