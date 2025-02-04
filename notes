@@ -896,3 +896,4 @@ for snapshot in "${ROLLBACK_SNAPSHOTS[@]}"; do
   kubectl delete volumesnapshot "$snapshot" -n "$NAMESPACE"
 done
 
+kubectl get pv -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.nodeAffinity.required.nodeSelectorTerms[*].matchExpressions[?(@.key=="topology.kubernetes.io/region")].values[*]}{"\n"}{end}'
